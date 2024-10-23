@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import './App.css'
+import EditorPage from './pages/Editorpage';
+import UploadPage from './pages/UploadPage';
+import { Routes, Route } from "react-router-dom";
 
 function App() {
+  
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-4xl font-bold">Hello, Tailwind CSS with Vite and React!</h1>
+    <div className="min-h-screen flex items-center justify-center App">
+      <Routes>
+        <Route path="/" element ={<UploadPage />}/>
+        <Route path="/map-editor" element = {<EditorPage />} />
+      </Routes>
     </div>
   );
 }
