@@ -20,7 +20,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const markerRefs = useRef([]); // Reference to each marker DOM element
   const [activeMarker, setActiveMarker] = useState(null); // Track the active marker
 
-  // New function to update geotags for images
   const updateGeotags = async (images) => {
     const processImage = async (imageFile) => {
       try {
@@ -42,6 +41,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       images.map((image) => processImage(image.file)) // Process the actual File object
     );
 
+    // Saves geotags in selectedImages
     const updatedImages = images.map((image, index) => {
       const geotag = geotags[index];
       return {
@@ -51,6 +51,48 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     });
     setSelectedImages(updatedImages);
     return updatedImages;
+  };
+
+  // Crops images (before rendering the final download version) according to the current state on screen (after user potentially cropped them)
+  const cropImage = async (image) => {
+    // Crop image according to user specifications and return the cropped version
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = image.url;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        // Get the current dimensions of the image on the screen
+        const imgElement = document.querySelector(`img[src="${image.url}"]`);
+        const displayedWidth = imgElement.clientWidth;
+        const displayedHeight = imgElement.clientHeight;
+
+        // Calculate the cropping dimensions based on the displayed size
+        const cropWidth = (displayedWidth / imgElement.naturalWidth) * img.width;
+        const cropHeight = (displayedHeight / imgElement.naturalHeight) * img.height;
+
+        // Set canvas dimensions to the cropped size
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        // Draw the cropped image onto the canvas
+        context.drawImage(
+          img,
+          (img.width - cropWidth) / 2,
+          (img.height - cropHeight) / 2,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          cropWidth,
+          cropHeight
+        );
+        canvas.toBlob((blob) => {
+          const croppedUrl = URL.createObjectURL(blob);
+          resolve(croppedUrl);
+        });
+      };
+    });
   };
 
   const calculateCenterAndZoom = (images) => {
@@ -140,34 +182,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       map.current.addControl(new mapboxgl.FullscreenControl(), "top-right");
       map.current.addControl(new mapboxgl.NavigationControl(), "top-left");
 
-      const geojson = {
-        type: "FeatureCollection",
-        features: updatedImages
-          .filter((image) => image.coordinates)
-          .map((image) => ({
-            type: "Feature",
-            geometry: {
-              type: "Point",
-              coordinates: image.coordinates,
-            },
-            properties: {},
-          })),
-      };
-
-      map.current.addSource("geotag-points", {
-        type: "geojson",
-        data: geojson,
-      });
-
-      map.current.addLayer({
-        id: "geotag-points-layer",
-        type: "circle",
-        source: "geotag-points",
-        paint: {
-          "circle-radius": 8,
-          "circle-color": "#FF0000",
-        },
-      });
       addDownloadPluginFunctionality();
       addMoveableUserPictures(updatedImages);
     });
@@ -203,6 +217,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       el.style.position = "absolute";
       el.style.transition = "width 0.1s, height 0.1s";
 
+      // Event listeners for resizing and interaction
       el.addEventListener("mouseenter", () => {
         el.style.border = "2px solid lightblue";
       });
@@ -223,6 +238,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
           }
         });
 
+        // Add resize handles to the active marker
         const existingHandles = el.querySelectorAll(".resize-handle");
         existingHandles.forEach((handle) => handle.remove());
 
@@ -393,35 +409,109 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     });
   };
 
+  // Removes HTML markers from the DOM and clears references
+  const removeHtmlMarkers = () => {
+    markerRefs.current.forEach((marker) => marker.remove());
+    markerRefs.current = [];
+  };
+
+  // Renders images in Mapbox as native layers for the export
+  const renderImagesInMapbox = async () => {
+    const croppedImages = await Promise.all(
+      selectedImages.map((image) => cropImage(image))
+    );
+
+    croppedImages.forEach((croppedUrl, index) => {
+      const image = selectedImages[index];
+      if (!image.coordinates) return;
+      map.current.loadImage(croppedUrl, (error, loadedImage) => {
+        if (error) {
+          console.error("Error loading image:", error);
+          return;
+        }
+        const imageId = `marker-image-${index}`;
+        if (!map.current.hasImage(imageId)) {
+          map.current.addImage(imageId, loadedImage);
+        }
+        map.current.addLayer({
+          id: `marker-layer-${index}`,
+          type: "symbol",
+          source: {
+            type: "geojson",
+            data: {
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  geometry: {
+                    type: "Point",
+                    coordinates: image.coordinates,
+                  },
+                },
+              ],
+            },
+          },
+          layout: {
+            "icon-image": imageId,
+            "icon-size": 0.1,
+          },
+        });
+      });
+    });
+  };
+
+  // Triggers the download using MapboxExportControl
+  const triggerDownload = async () => {
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Allow a short delay for rendering
+
+      const controls = map.current._controls;
+      const exportControl = controls.find(
+        (ctrl) => ctrl instanceof MapboxExportControl
+      );
+      if (exportControl) {
+        exportControl.onAdd(map.current).exportMap();
+      }
+    } catch (error) {
+      console.error("Error during download:", error);
+    }
+  };
+
+  // Reverts Mapbox native layers to original HTML markers
+  const revertToHtmlMarkers = () => {
+    selectedImages.forEach((image, index) => {
+      const layerId = `marker-layer-${index}`;
+      const imageId = `marker-image-${index}`;
+      if (map.current.getLayer(layerId)) {
+        map.current.removeLayer(layerId);
+      }
+      if (map.current.hasImage(imageId)) {
+        map.current.removeImage(imageId);
+      }
+    });
+    addMoveableUserPictures(selectedImages);
+  };
+
+  // Main handleDownload function, integrating the split parts
+  const handleDownload = async () => {
+    if (!mapContainer.current) return;
+
+    // removeHtmlMarkers();
+    renderImagesInMapbox();
+    await triggerDownload();
+    revertToHtmlMarkers();
+  };
+
+  const debugRenderMarkersInMapbox = () => {
+    if (!mapContainer.current) return;
+
+    removeHtmlMarkers();
+    renderImagesInMapbox();
+  };
+
   useEffect(() => {
     initializeMap();
   }, []);
-
-  const handleDownload = () => {
-    if (!map.current) return;
-
-    // Hide UI elements during capture
-    const controls = document.querySelectorAll(
-      ".mapboxgl-control-container, .resize-handle"
-    );
-    controls.forEach((control) => (control.style.display = "none"));
-
-    // Use Mapbox GL method to get canvas
-    const canvas = map.current.getCanvas();
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "mapbox_screenshot.png";
-        link.click();
-        URL.revokeObjectURL(link.href);
-      }
-    }, "image/png");
-
-    // Restore UI elements after capture
-    controls.forEach((control) => (control.style.display = ""));
-  };
 
   return (
     <div
@@ -439,7 +529,13 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         onClick={handleDownload}
         className="mb-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-700"
       >
-        Download Map as Image
+        Download High-Quality Map as Image
+      </button>
+      <button
+        onClick={debugRenderMarkersInMapbox}
+        className="mb-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-700"
+      >
+        Debug: Remove HTML Markers and Add to Mapbox
       </button>
       <div className="flex flex-wrap justify-center">
         {selectedImages.map((image, index) => (
