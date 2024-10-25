@@ -10,15 +10,45 @@ import {
   DPI,
 } from "@watergis/mapbox-gl-export";
 import "@watergis/mapbox-gl-export/dist/mapbox-gl-export.css";
+import html2canvas from "html2canvas";
+import axios from "axios";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const [markerSizes, setMarkerSizes] = useState(
-    () => selectedImages.map(() => 50) // Initialize sizes for each image
-  );
   const markerRefs = useRef([]); // Reference to each marker DOM element
+  const redDotRefs = useRef([]); // Reference to each red dot marker DOM element
   const [activeMarker, setActiveMarker] = useState(null); // Track the active marker
+  const [isUIVisible, setIsUIVisible] = useState(true); // Track UI visibility
+  const [markerSizesWidth, setMarkerSizesWidth] = useState([]);
+  const [markerSizesHeight, setMarkerSizesHeight] = useState([]);
+  const [initialMoveablePictureRenderFlag, setInitialMoveabePictureRenderFlag] =
+    useState(false);
+  const [headlineText, setHeadlineText] = useState("Headline");
+  const [dividerText, setDividerText] = useState("Divider");
+  const [taglineText, setTaglineText] = useState("Tagline");
+
+  const calculateInitialMarkerSizes = (images) => {
+    const fixedHeight = Math.max(
+      180,
+      mapContainer.current.clientHeight / (images.length + 6)
+    ); // Desired fixed height in pixels
+
+    const sizes = images.map((image) => {
+      const img = new Image();
+      img.src = image.url;
+      const aspectRatio = img.naturalWidth / img.naturalHeight;
+      const calculatedWidth = fixedHeight * aspectRatio;
+      return { width: calculatedWidth, height: fixedHeight };
+    });
+    const widths = sizes.map((size) => size.width);
+    const heights = sizes.map((size) => size.height);
+    console.log(widths, heights);
+    console.log(markerSizesHeight, markerSizesWidth);
+    setMarkerSizesWidth(widths);
+    setMarkerSizesHeight(heights);
+    console.log(markerSizesHeight, markerSizesWidth);
+  };
 
   const updateGeotags = async (images) => {
     const processImage = async (imageFile) => {
@@ -53,6 +83,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     return updatedImages;
   };
 
+  // Use https://www.npmjs.com/package/react-image-file-resizer instead
   // Crops images (before rendering the final download version) according to the current state on screen (after user potentially cropped them)
   const cropImage = async (image) => {
     // Crop image according to user specifications and return the cropped version
@@ -68,8 +99,10 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         const displayedHeight = imgElement.clientHeight;
 
         // Calculate the cropping dimensions based on the displayed size
-        const cropWidth = (displayedWidth / imgElement.naturalWidth) * img.width;
-        const cropHeight = (displayedHeight / imgElement.naturalHeight) * img.height;
+        const cropWidth =
+          (displayedWidth / imgElement.naturalWidth) * img.width;
+        const cropHeight =
+          (displayedHeight / imgElement.naturalHeight) * img.height;
 
         // Set canvas dimensions to the cropped size
         canvas.width = cropWidth;
@@ -168,24 +201,42 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
     const updatedImages = await updateGeotags(selectedImages);
+    if (updatedImages.length > 0) {
+      updateTextSectionWithLocation(updatedImages[0].coordinates);
+    }
+    setSelectedImages(updatedImages);
     const { center, zoom } = calculateCenterAndZoom(updatedImages);
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/streets-v11",
+      style: "mapbox://styles/dexmap/cm2ol7sge000p01pa0k4f092t",
       center: [center.lng, center.lat],
       zoom: zoom,
       preserveDrawingBuffer: true,
     });
 
-    map.current.on("load", () => {
+    map.current.on("load", async () => {
       map.current.addControl(new mapboxgl.FullscreenControl(), "top-right");
       map.current.addControl(new mapboxgl.NavigationControl(), "top-left");
-
+      calculateInitialMarkerSizes(updatedImages);
       addDownloadPluginFunctionality();
-      addMoveableUserPictures(updatedImages);
     });
+    map.current.on("zoom", updateLines);
+    map.current.on("move", updateLines);
   };
+
+  //initializes map
+  useEffect(() => {
+    if (
+      markerSizesWidth.length > 0 &&
+      markerSizesHeight.length > 0 &&
+      initialMoveablePictureRenderFlag === false
+    ) {
+      addRedDotMarkers(selectedImages);
+      addMoveableUserPictures(selectedImages);
+      addConnectingLines();
+    }
+  }, [markerSizesWidth, markerSizesHeight, selectedImages]);
 
   const addDownloadPluginFunctionality = () => {
     const exportControl = new MapboxExportControl({
@@ -203,19 +254,20 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
 
   const addMoveableUserPictures = (images) => {
     markerRefs.current = [];
-
     images.forEach((image, index) => {
       if (!image.coordinates) return;
+      if (!markerSizesWidth[index] || !markerSizesHeight[index]) return;
 
       const el = document.createElement("div");
       el.className = "custom-marker";
       el.style.backgroundImage = `url(${image.url})`;
-      el.style.width = `${markerSizes[index]}px`;
-      el.style.height = `${markerSizes[index]}px`;
+      el.style.width = `${markerSizesWidth[index]}px`;
+      el.style.height = `${markerSizesHeight[index]}px`;
       el.style.backgroundSize = "cover";
       el.style.borderRadius = "10px";
       el.style.position = "absolute";
       el.style.transition = "width 0.1s, height 0.1s";
+      el.style.border = "2px solid black";
 
       // Event listeners for resizing and interaction
       el.addEventListener("mouseenter", () => {
@@ -231,10 +283,11 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         e.stopPropagation();
         setActiveMarker(el);
         markerRefs.current.forEach((marker) => {
-          if (marker !== el) {
-            const existingHandles = marker.querySelectorAll(".resize-handle");
+          if (marker.element !== el) {
+            const existingHandles =
+              marker.element.querySelectorAll(".resize-handle");
             existingHandles.forEach((handle) => handle.remove());
-            marker.style.border = "none";
+            marker.element.style.border = "none";
           }
         });
 
@@ -256,7 +309,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
           cornerHandle.style.backgroundColor = "white";
           cornerHandle.style.position = "absolute";
           cornerHandle.style.cursor = "nwse-resize";
-          cornerHandle.style.borderRadius = "4px";
+          cornerHandle.style.borderRadius = "6px";
           cornerHandle.style.transition = "background-color 0.2s";
 
           if (corner.includes("top")) cornerHandle.style.top = "-5px";
@@ -276,18 +329,25 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
             e.stopPropagation();
             const startX = e.clientX;
             const startY = e.clientY;
-            const startSize = markerSizes[index];
+            const startHeight = markerSizesHeight[index];
+            const startWidth = markerSizesWidth[index];
 
             const onMouseMove = (e) => {
               const delta = Math.max(e.clientX - startX, e.clientY - startY);
-              const newSize = Math.max(10, startSize + delta);
-              setMarkerSizes((prevSizes) => {
-                const updatedSizes = [...prevSizes];
-                updatedSizes[index] = newSize;
-                return updatedSizes;
+              const newHeight = Math.max(10, startHeight + delta);
+              const newWidth = newHeight * (startWidth / startHeight); // Maintain aspect ratio
+              setMarkerSizesHeight((prevHeights) => {
+                const updatedHeights = [...prevHeights];
+                updatedHeights[index] = newHeight;
+                return updatedHeights;
               });
-              el.style.width = `${newSize}px`;
-              el.style.height = `${newSize}px`;
+              setMarkerSizesWidth((prevWidths) => {
+                const updatedWidths = [...prevWidths];
+                updatedWidths[index] = newWidth;
+                return updatedWidths;
+              });
+              el.style.width = `${newWidth}px`;
+              el.style.height = `${newHeight}px`;
             };
 
             const onMouseUp = () => {
@@ -374,15 +434,25 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         });
       });
 
-      const marker = new mapboxgl.Marker({
+      const mapBounds = map.current.getBounds();
+      const offsetLng =
+        (mapBounds.getNorthEast().lng - image.coordinates[0]) * 0.3;
+      const offsetLat =
+        (mapBounds.getNorthEast().lat - image.coordinates[1]) * 0.3;
+
+      const pictureMarker = new mapboxgl.Marker({
         element: el,
         draggable: true,
       })
-        .setLngLat(image.coordinates)
+        .setLngLat([
+          image.coordinates[0] + offsetLng,
+          image.coordinates[1] + offsetLat,
+        ]) // Adjust the coordinates to be 10% above and to the right
         .addTo(map.current);
 
-      marker.on("dragend", () => {
-        const newCoords = marker.getLngLat();
+      pictureMarker.on("dragend", () => {
+        updateLines();
+        const newCoords = pictureMarker.getLngLat();
         setSelectedImages((prevImages) => {
           const updatedImages = [...prevImages];
           updatedImages[index] = {
@@ -393,7 +463,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         });
       });
 
-      markerRefs.current.push(el);
+      markerRefs.current.push({ element: el, marker: pictureMarker });
     });
 
     // Add event listener to clear handles when clicking outside markers
@@ -401,117 +471,249 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       if (!markerRefs.current.includes(e.target)) {
         setActiveMarker(null);
         markerRefs.current.forEach((marker) => {
-          const existingHandles = marker.querySelectorAll(".resize-handle");
+          const existingHandles =
+            marker.element.querySelectorAll(".resize-handle");
           existingHandles.forEach((handle) => handle.remove());
-          marker.style.border = "none";
+          marker.element.style.border = "none";
         });
       }
     });
+    setInitialMoveabePictureRenderFlag(true);
   };
 
-  // Removes HTML markers from the DOM and clears references
-  const removeHtmlMarkers = () => {
-    markerRefs.current.forEach((marker) => marker.remove());
-    markerRefs.current = [];
-  };
-
-  // Renders images in Mapbox as native layers for the export
-  const renderImagesInMapbox = async () => {
-    const croppedImages = await Promise.all(
-      selectedImages.map((image) => cropImage(image))
+  const toggleUIVisibility = () => {
+    setIsUIVisible((prev) => !prev);
+    const elementsToToggle = document.querySelectorAll(
+      ".mapboxgl-ctrl, .resize-handle, .mapboxgl-ctrl-button"
     );
-
-    croppedImages.forEach((croppedUrl, index) => {
-      const image = selectedImages[index];
-      if (!image.coordinates) return;
-      map.current.loadImage(croppedUrl, (error, loadedImage) => {
-        if (error) {
-          console.error("Error loading image:", error);
-          return;
-        }
-        const imageId = `marker-image-${index}`;
-        if (!map.current.hasImage(imageId)) {
-          map.current.addImage(imageId, loadedImage);
-        }
-        map.current.addLayer({
-          id: `marker-layer-${index}`,
-          type: "symbol",
-          source: {
-            type: "geojson",
-            data: {
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature",
-                  geometry: {
-                    type: "Point",
-                    coordinates: image.coordinates,
-                  },
-                },
-              ],
-            },
-          },
-          layout: {
-            "icon-image": imageId,
-            "icon-size": 0.1,
-          },
-        });
-      });
+    elementsToToggle.forEach((element) => {
+      element.style.display = isUIVisible ? "none" : "";
     });
   };
 
-  // Triggers the download using MapboxExportControl
-  const triggerDownload = async () => {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Allow a short delay for rendering
-
-      const controls = map.current._controls;
-      const exportControl = controls.find(
-        (ctrl) => ctrl instanceof MapboxExportControl
-      );
-      if (exportControl) {
-        exportControl.onAdd(map.current).exportMap();
-      }
-    } catch (error) {
-      console.error("Error during download:", error);
-    }
-  };
-
-  // Reverts Mapbox native layers to original HTML markers
-  const revertToHtmlMarkers = () => {
-    selectedImages.forEach((image, index) => {
-      const layerId = `marker-layer-${index}`;
-      const imageId = `marker-image-${index}`;
-      if (map.current.getLayer(layerId)) {
-        map.current.removeLayer(layerId);
-      }
-      if (map.current.hasImage(imageId)) {
-        map.current.removeImage(imageId);
-      }
-    });
-    addMoveableUserPictures(selectedImages);
-  };
-
-  // Main handleDownload function, integrating the split parts
   const handleDownload = async () => {
     if (!mapContainer.current) return;
 
-    // removeHtmlMarkers();
-    renderImagesInMapbox();
-    await triggerDownload();
-    revertToHtmlMarkers();
+    // Hide UI elements before downloading
+    toggleUIVisibility(false);
+
+    const mapElement = mapContainer.current;
+    html2canvas(mapElement, {
+      scale: 4, // Increase scale for high resolution
+      useCORS: true, // Handle cross-origin images
+    }).then((canvas) => {
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "high-quality-map.png";
+      link.click();
+
+      // Re-show UI elements after download
+      toggleUIVisibility(true);
+    });
   };
 
-  const debugRenderMarkersInMapbox = () => {
-    if (!mapContainer.current) return;
+  const addRedDotMarkers = (images) => {
+    redDotRefs.current = [];
 
-    removeHtmlMarkers();
-    renderImagesInMapbox();
+    images.forEach((image, index) => {
+      if (!image.coordinates) return;
+
+      const redDotEl = document.createElement("div");
+      redDotEl.className = "red-dot-marker";
+      const redDotIcon = document.createElement("img");
+      redDotIcon.src = "../assets/user-placeable-icons/heart.svg";
+      redDotIcon.style.width = "30px";
+      redDotIcon.style.height = "30px";
+      redDotEl.appendChild(redDotIcon);
+
+      const redDotMarker = new mapboxgl.Marker({
+        element: redDotEl,
+        draggable: true,
+      })
+        .setLngLat(image.coordinates)
+        .addTo(map.current);
+
+      redDotMarker.on("dragend", () => {
+        updateLines();
+        const newCoords = redDotMarker.getLngLat();
+        setSelectedImages((prevImages) => {
+          const updatedImages = [...prevImages];
+          updatedImages[index] = {
+            ...updatedImages[index],
+            coordinates: [newCoords.lng, newCoords.lat],
+          };
+          return updatedImages;
+        });
+      });
+
+      redDotRefs.current.push({ element: redDotEl, marker: redDotMarker });
+    });
   };
 
+  const addConnectingLines = () => {
+    markerRefs.current.forEach((markerRef, index) => {
+      const pictureMarker = markerRef.marker;
+      const redDotMarker = redDotRefs.current[index]?.marker;
+      if (!pictureMarker || !redDotMarker) return;
+
+      const lineId = `line-${index}`;
+
+      const updateLine = () => {
+        const closestCorner = getClosestCorner(pictureMarker, redDotMarker);
+        const redDotCoords = redDotMarker.getLngLat();
+
+        if (map.current.getSource(lineId)) {
+          map.current.getSource(lineId).setData({
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                closestCorner,
+                [redDotCoords.lng, redDotCoords.lat],
+              ],
+            },
+          });
+        } else {
+          map.current.addSource(lineId, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  closestCorner,
+                  [redDotCoords.lng, redDotCoords.lat],
+                ],
+              },
+            },
+          });
+
+          map.current.addLayer({
+            id: lineId,
+            type: "line",
+            source: lineId,
+            paint: {
+              "line-color": "#000000", // black color
+              "line-width": 1,
+            },
+          });
+        }
+      };
+
+      updateLine();
+    });
+  };
+
+  const updateLines = () => {
+    markerRefs.current.forEach((markerRef, index) => {
+      const pictureMarker = markerRef.marker;
+      const redDotMarker = redDotRefs.current[index]?.marker;
+      if (!pictureMarker || !redDotMarker) return;
+
+      const lineId = `line-${index}`;
+      const closestCorner = getClosestCorner(pictureMarker, redDotMarker);
+
+      const redDotCoords = redDotMarker.getLngLat();
+
+      if (map.current.getSource(lineId)) {
+        map.current.getSource(lineId).setData({
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [closestCorner, [redDotCoords.lng, redDotCoords.lat]],
+          },
+        });
+      }
+    });
+  };
+
+  // Not working, needs an update
+  const getClosestCorner = (marker, target) => {
+    const { lng, lat } = marker.getLngLat();
+    const markerElement = marker.getElement();
+
+    // Marker size in pixels (actual image size may be much larger)
+    const markerWidth = parseFloat(markerElement.style.width.replace("px", ""));
+    const markerHeight = parseFloat(
+      markerElement.style.height.replace("px", "")
+    );
+
+    // Assuming we need to calculate based on the actual image size relative to the marker
+    const imageWidthFactor = 2.5; // Adjust this factor based on how much larger the image is
+    const imageHeightFactor = 2.5;
+
+    const actualImageWidth = markerWidth * imageWidthFactor;
+    const actualImageHeight = markerHeight * imageHeightFactor;
+
+    // Get the map's current zoom level and convert the pixel size to geographical units
+    const zoomScale = Math.pow(2, -map.current.getZoom());
+
+    // Calculate longitude and latitude offsets for each corner
+    const lngOffset = actualImageWidth * zoomScale * 0.00001;
+    const latOffset = actualImageHeight * zoomScale * 0.00001;
+
+    // Define the corners based on the actual size of the picture
+    const corners = [
+      [lng - lngOffset, lat + latOffset], // Top left
+      [lng + lngOffset, lat + latOffset], // Top right
+      [lng - lngOffset, lat - latOffset], // Bottom left
+      [lng + lngOffset, lat - latOffset], // Bottom right
+    ];
+
+    let closestCorner = corners[0];
+    let minDistance = getDistance(closestCorner, target.getLngLat());
+
+    for (let i = 1; i < corners.length; i++) {
+      const distance = getDistance(corners[i], target.getLngLat());
+      if (distance < minDistance) {
+        closestCorner = corners[i];
+        minDistance = distance;
+      }
+    }
+
+    return closestCorner;
+  };
+
+  // Helper to calculate distance
+  const getDistance = (pointA, pointB) => {
+    const lngDiff = pointA[0] - pointB.lng;
+    const latDiff = pointA[1] - pointB.lat;
+    return Math.sqrt(lngDiff * lngDiff + latDiff * latDiff);
+  };
+
+  // all useEffects
   useEffect(() => {
     initializeMap();
   }, []);
+
+  const setTextSection = (headline, divider, tagline) => {
+    setHeadlineText(headline);
+    setDividerText(divider);
+    setTaglineText(tagline);
+  };
+
+  const updateTextSectionWithLocation = async (coordinates) => {
+    const [lng, lat] = coordinates;
+    try {
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+      );
+      const locationData = response.data;
+      const city =
+        locationData.address.city ||
+        locationData.address.town ||
+        locationData.address.village ||
+        "Unknown City";
+      const country = locationData.address.country || "Unknown Country";
+      setTextSection(
+        city,
+        country,
+        `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+      );
+    } catch (error) {
+      console.error("Error fetching location data:", error);
+    }
+  };
 
   return (
     <div
@@ -521,9 +723,48 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       <div className="w-full flex justify-center">
         <div
           ref={mapContainer}
-          style={{ width: "900px", height: "1260px" }}
+          style={{ width: "900px", height: "1260px", position: "relative" }}
           className="relative mb-4"
-        />
+        >
+          <div
+            className="w-full flex flex-col items-center justify-center p-4 z-10"
+            style={{
+              backgroundColor: "#ffffff",
+              height: "calc(100vh / 7)",
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              gap: "10px", // Add gap between elements
+              borderTopLeftRadius: "20px", // Add border radius for smooth transition
+              borderTopRightRadius: "20px", // Add border radius for smooth transition
+              boxShadow: "0 -4px 8px rgba(0, 0, 0, 0.1)", // Add shadow for smooth transition
+            }}
+          >
+            <div
+              className="text-center font-bold text-4xl font-sans"
+              style={{ textTransform: "uppercase", letterSpacing: "0.1em" }} // Add letter spacing
+            >
+              {headlineText}
+            </div>
+            <div
+              className="text-center text-2xl font-sans"
+              style={{ textTransform: "uppercase", letterSpacing: "0.1em" }} // Add letter spacing
+            >
+              {dividerText}
+            </div>
+            <div
+              className="text-center text-lg font-sans"
+              style={{
+                color: "#4a4a4a",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }} // Add letter spacing
+            >
+              {taglineText}
+            </div>
+          </div>
+        </div>
       </div>
       <button
         onClick={handleDownload}
@@ -532,10 +773,10 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         Download High-Quality Map as Image
       </button>
       <button
-        onClick={debugRenderMarkersInMapbox}
+        onClick={toggleUIVisibility}
         className="mb-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-700"
       >
-        Debug: Remove HTML Markers and Add to Mapbox
+        Toggle UI visibility
       </button>
       <div className="flex flex-wrap justify-center">
         {selectedImages.map((image, index) => (

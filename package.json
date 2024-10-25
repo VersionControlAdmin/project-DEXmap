@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.7.7",
     "dom-to-image": "^2.6.0",
     "exif-js": "^2.3.0",
     "exifr": "^7.1.3",
