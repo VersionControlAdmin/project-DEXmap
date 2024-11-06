@@ -106,10 +106,8 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     onDragEnd,
   }) => {
     const [isDragging, setIsDragging] = useState(false);
-    const [showResizeUI, setShowResizeUI] = useState(false);
-    const targetRef = useRef(null);
-    const dragStartPos = useRef(null);
-    
+    const [isResizing, setIsResizing] = useState(false);
+    const positionRef = useRef(image.coordinates);
     const [pixelPosition, setPixelPosition] = useState(() => {
       if (map.current) {
         const pos = map.current.project(image.coordinates);
@@ -117,116 +115,147 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       }
       return [0, 0];
     });
-  
-    // Handle clicks outside to hide resize UI
+
+    // Handle clicks outside the marker to deactivate it
     useEffect(() => {
       const handleClickOutside = (e) => {
-        if (!targetRef.current?.contains(e.target) && !e.target.className?.includes('moveable')) {
-          setShowResizeUI(false);
+        if (!e.target.closest(".custom-marker")) {
+          onClick(null); // Deselect the marker
         }
       };
-  
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-  
-    const handleMouseDown = (e) => {
-      if (e.target.className?.includes('moveable')) return;
-      dragStartPos.current = { x: e.clientX, y: e.clientY };
-    };
-  
-    const handleMouseUp = (e) => {
-      if (!dragStartPos.current) return;
-      
-      // If mouse hasn't moved much, consider it a click
-      const dx = e.clientX - dragStartPos.current.x;
-      const dy = e.clientY - dragStartPos.current.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance < 5) { // threshold for click vs. drag
-        setShowResizeUI(true);
+
+      if (isActive) {
+        document.addEventListener("mousedown", handleClickOutside);
       }
-      dragStartPos.current = null;
-    };
-  
+
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }, [isActive, onClick]);
+
     const handleDragStart = (e) => {
-      if (e.target.className?.includes('moveable')) return;
+      // Only start dragging if clicking on the image itself, not the resize handles
+      if (e.target.className.includes("resize-handle")) {
+        return;
+      }
+      e.preventDefault();
       setIsDragging(true);
     };
-  
+
     const handleDrag = (e) => {
       if (!isDragging || !map.current) return;
-  
+
       const mapContainer = map.current.getContainer();
       const rect = mapContainer.getBoundingClientRect();
       const newX = e.clientX - rect.left;
       const newY = e.clientY - rect.top;
-  
+
       setPixelPosition([newX, newY]);
     };
-  
+
     const handleDragEnd = () => {
       if (!isDragging || !map.current) return;
-  
+
       const newGeoCoords = map.current.unproject(pixelPosition);
+      positionRef.current = [newGeoCoords.lng, newGeoCoords.lat];
       onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
       setIsDragging(false);
     };
-  
+
+    const handleClick = (e) => {
+      // Only handle click if not dragging and not clicking resize handles
+      if (!isDragging && !e.target.className.includes("resize-handle")) {
+        e.stopPropagation();
+        onClick(image.id);
+      }
+    };
+
+    const ResizeHandles = ({ onResize }) => {
+      const handleMouseDown = (e) => {
+        e.stopPropagation(); // Prevent drag start
+        setIsResizing(true);
+      };
+
+      const handleMouseMove = (e) => {
+        if (!isResizing) return;
+
+        const deltaX = e.movementX;
+        const deltaY = e.movementY;
+        const parentElement = e.currentTarget.parentElement;
+        const aspectRatio =
+          parentElement.offsetWidth / parentElement.offsetHeight;
+
+        const newWidth = Math.max(50, parentElement.offsetWidth + deltaX);
+        const newHeight = newWidth / aspectRatio;
+
+        onResize({ width: newWidth, height: newHeight });
+      };
+
+      const handleMouseUp = () => {
+        setIsResizing(false);
+      };
+
+      useEffect(() => {
+        if (isResizing) {
+          document.addEventListener("mousemove", handleMouseMove);
+          document.addEventListener("mouseup", handleMouseUp);
+        }
+        return () => {
+          document.removeEventListener("mousemove", handleMouseMove);
+          document.removeEventListener("mouseup", handleMouseUp);
+        };
+      }, [isResizing]);
+
+      return (
+        <>
+          {["top-left", "top-right", "bottom-left", "bottom-right"].map(
+            (corner) => (
+              <div
+                key={corner}
+                className={`resize-handle ${corner}`}
+                onMouseDown={handleMouseDown}
+                role="button"
+                tabIndex={0}
+              />
+            )
+          )}
+        </>
+      );
+    };
+
     return (
-      <>
-        <div
-          ref={targetRef}
-          className="custom-marker"
-          style={{
-            ...style,
-            position: "absolute",
-            left: 0,
-            top: 0,
-            transform: `translate(${pixelPosition[0] - style.width / 2}px, ${
-              pixelPosition[1] - style.height / 2
-            }px)`,
-            cursor: isDragging ? "grabbing" : "grab",
-            backgroundImage: `url(${image.url})`,
-            backgroundSize: "cover",
-            borderRadius: "10px",
-            border: showResizeUI ? "2px solid lightblue" : "2px solid black",
-            userSelect: "none",
-            zIndex: showResizeUI ? 2 : 1,
-            touchAction: "none",
-            willChange: "transform",
-            width: style.width + "px",
-            height: style.height + "px",
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onDragStart={handleDragStart}
-          onDrag={handleDrag}
-          onDragEnd={handleDragEnd}
-        />
-        {showResizeUI && (
-          <Moveable
-            target={targetRef.current}
-            draggable={false}
-            resizable={true}
-            keepRatio={true}
-            renderDirections={["nw", "ne", "sw", "se"]}
-            edge={false}
-            zoom={1}
-            origin={false}
-            padding={{ left: 0, top: 0, right: 0, bottom: 0 }}
-            onResizeStart={(e) => {
-              e.setOrigin(["%", "%"]);
-              e.dragStart && e.dragStart.set(style.width, style.height);
-            }}
-            onResize={(e) => {
-              const newWidth = e.width;
-              const newHeight = e.height;
-              onResize(image.id, { width: newWidth, height: newHeight });
-            }}
-          />
+      <div
+        className={`custom-marker ${isActive ? "active" : ""} ${
+          isDragging ? "dragging" : ""
+        }`}
+        style={{
+          ...style,
+          position: "absolute",
+          left: 0,
+          top: 0,
+          transform: `translate(${pixelPosition[0] - style.width / 2}px, ${
+            pixelPosition[1] - style.height / 2
+          }px)`,
+          cursor: isDragging ? "grabbing" : isResizing ? "resize" : "grab",
+          backgroundImage: `url(${image.url})`,
+          backgroundSize: "cover",
+          borderRadius: "10px",
+          border: isActive ? "2px solid lightblue" : "2px solid black",
+          userSelect: "none",
+          zIndex: isActive ? 2 : 1,
+          touchAction: "none",
+          willChange: "transform",
+        }}
+        onMouseDown={handleDragStart}
+        onMouseMove={handleDrag}
+        onMouseUp={handleDragEnd}
+        onMouseLeave={handleDragEnd}
+        onClick={handleClick}
+      >
+        {isActive && (
+          <ResizeHandles onResize={(newSize) => onResize(image.id, newSize)} />
         )}
-      </>
+      </div>
     );
   };
 
