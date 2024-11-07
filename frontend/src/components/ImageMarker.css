@@ -1,0 +1,14 @@
+.custom-marker {
+    position: absolute;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  
+  .custom-marker.active {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  }
+  
+  .custom-marker.dragging {
+    opacity: 0.8;
+    transition: none;
+  }

@@ -12,7 +12,8 @@ import {
 import "@watergis/mapbox-gl-export/dist/mapbox-gl-export.css";
 import html2canvas from "html2canvas";
 import axios from "axios";
-import Moveable from "react-moveable";
+import RedDotMarker from "./RedDotMarkers";
+import ImageMarker from "./ImageMarker";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -20,7 +21,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [markers, setMarkers] = useState([]);
   const [redDots, setRedDots] = useState([]);
   const [activeMarkerId, setActiveMarkerId] = useState(null); // Track the active marker
-  const [isUIVisible, setIsUIVisible] = useState(true); // Track UI visibility
   const [markerSizesWidth, setMarkerSizesWidth] = useState([]);
   const [markerSizesHeight, setMarkerSizesHeight] = useState([]);
   const [markerStyles, setMarkerStyles] = useState([]);
@@ -34,7 +34,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [headlineText, setHeadlineText] = useState("Headline");
   const [dividerText, setDividerText] = useState("Divider");
   const [taglineText, setTaglineText] = useState("Tagline");
-  const [connections, setConnections] = useState([]);
 
   // Image Marker Functionality
   // New handler for marker interactions
@@ -68,25 +67,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     });
   }, [markers, redDots]);
 
-  // New handler for marker resizing
-  const handleResize = useCallback(
-    (markerId, newSize) => {
-      setMarkerStyles((prev) =>
-        prev.map((style) =>
-          style.id === markerId
-            ? {
-                ...style,
-                width: Math.max(50, newSize.width), // Ensure minimum width
-                height: Math.max(50, newSize.height), // Ensure minimum height
-              }
-            : style
-        )
-      );
-      updateLines(); // Update lines after resize
-    },
-    [updateLines]
-  );
-
   // New handler for marker dragging
   const handleDragEnd = useCallback((markerId, newCoords) => {
     setMarkers((prev) =>
@@ -96,168 +76,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     );
     updateLines();
   }, []);
-
-  const ImageMarker = ({
-    image,
-    style,
-    isActive,
-    onResize,
-    onClick,
-    onDragEnd,
-  }) => {
-    const [isDragging, setIsDragging] = useState(false);
-    const [isResizing, setIsResizing] = useState(false);
-    const positionRef = useRef(image.coordinates);
-    const [pixelPosition, setPixelPosition] = useState(() => {
-      if (map.current) {
-        const pos = map.current.project(image.coordinates);
-        return [pos.x, pos.y];
-      }
-      return [0, 0];
-    });
-
-    // Handle clicks outside the marker to deactivate it
-    useEffect(() => {
-      const handleClickOutside = (e) => {
-        if (!e.target.closest(".custom-marker")) {
-          onClick(null); // Deselect the marker
-        }
-      };
-
-      if (isActive) {
-        document.addEventListener("mousedown", handleClickOutside);
-      }
-
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }, [isActive, onClick]);
-
-    const handleDragStart = (e) => {
-      // Only start dragging if clicking on the image itself, not the resize handles
-      if (e.target.className.includes("resize-handle")) {
-        return;
-      }
-      e.preventDefault();
-      setIsDragging(true);
-    };
-
-    const handleDrag = (e) => {
-      if (!isDragging || !map.current) return;
-
-      const mapContainer = map.current.getContainer();
-      const rect = mapContainer.getBoundingClientRect();
-      const newX = e.clientX - rect.left;
-      const newY = e.clientY - rect.top;
-
-      setPixelPosition([newX, newY]);
-    };
-
-    const handleDragEnd = () => {
-      if (!isDragging || !map.current) return;
-
-      const newGeoCoords = map.current.unproject(pixelPosition);
-      positionRef.current = [newGeoCoords.lng, newGeoCoords.lat];
-      onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
-      setIsDragging(false);
-    };
-
-    const handleClick = (e) => {
-      // Only handle click if not dragging and not clicking resize handles
-      if (!isDragging && !e.target.className.includes("resize-handle")) {
-        e.stopPropagation();
-        onClick(image.id);
-      }
-    };
-
-    const ResizeHandles = ({ onResize }) => {
-      const handleMouseDown = (e) => {
-        e.stopPropagation(); // Prevent drag start
-        setIsResizing(true);
-      };
-
-      const handleMouseMove = (e) => {
-        if (!isResizing) return;
-
-        const deltaX = e.movementX;
-        const deltaY = e.movementY;
-        const parentElement = e.currentTarget.parentElement;
-        const aspectRatio =
-          parentElement.offsetWidth / parentElement.offsetHeight;
-
-        const newWidth = Math.max(50, parentElement.offsetWidth + deltaX);
-        const newHeight = newWidth / aspectRatio;
-
-        onResize({ width: newWidth, height: newHeight });
-      };
-
-      const handleMouseUp = () => {
-        setIsResizing(false);
-      };
-
-      useEffect(() => {
-        if (isResizing) {
-          document.addEventListener("mousemove", handleMouseMove);
-          document.addEventListener("mouseup", handleMouseUp);
-        }
-        return () => {
-          document.removeEventListener("mousemove", handleMouseMove);
-          document.removeEventListener("mouseup", handleMouseUp);
-        };
-      }, [isResizing]);
-
-      return (
-        <>
-          {["top-left", "top-right", "bottom-left", "bottom-right"].map(
-            (corner) => (
-              <div
-                key={corner}
-                className={`resize-handle ${corner}`}
-                onMouseDown={handleMouseDown}
-                role="button"
-                tabIndex={0}
-              />
-            )
-          )}
-        </>
-      );
-    };
-
-    return (
-      <div
-        className={`custom-marker ${isActive ? "active" : ""} ${
-          isDragging ? "dragging" : ""
-        }`}
-        style={{
-          ...style,
-          position: "absolute",
-          left: 0,
-          top: 0,
-          transform: `translate(${pixelPosition[0] - style.width / 2}px, ${
-            pixelPosition[1] - style.height / 2
-          }px)`,
-          cursor: isDragging ? "grabbing" : isResizing ? "resize" : "grab",
-          backgroundImage: `url(${image.url})`,
-          backgroundSize: "cover",
-          borderRadius: "10px",
-          border: isActive ? "2px solid lightblue" : "2px solid black",
-          userSelect: "none",
-          zIndex: isActive ? 2 : 1,
-          touchAction: "none",
-          willChange: "transform",
-        }}
-        onMouseDown={handleDragStart}
-        onMouseMove={handleDrag}
-        onMouseUp={handleDragEnd}
-        onMouseLeave={handleDragEnd}
-        onClick={handleClick}
-      >
-        {isActive && (
-          <ResizeHandles onResize={(newSize) => onResize(image.id, newSize)} />
-        )}
-      </div>
-    );
-  };
 
   // Modified toggleUIVisibility
   const toggleUIVisibility = useCallback(() => {
@@ -321,51 +139,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     });
     setSelectedImages(updatedImages);
     return updatedImages;
-  };
-
-  // Use https://www.npmjs.com/package/react-image-file-resizer instead
-  // Crops images (before rendering the final download version) according to the current state on screen (after user potentially cropped them)
-  const cropImage = async (image) => {
-    // Crop image according to user specifications and return the cropped version
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = image.url;
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        // Get the current dimensions of the image on the screen
-        const imgElement = document.querySelector(`img[src="${image.url}"]`);
-        const displayedWidth = imgElement.clientWidth;
-        const displayedHeight = imgElement.clientHeight;
-
-        // Calculate the cropping dimensions based on the displayed size
-        const cropWidth =
-          (displayedWidth / imgElement.naturalWidth) * img.width;
-        const cropHeight =
-          (displayedHeight / imgElement.naturalHeight) * img.height;
-
-        // Set canvas dimensions to the cropped size
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
-
-        // Draw the cropped image onto the canvas
-        context.drawImage(
-          img,
-          (img.width - cropWidth) / 2,
-          (img.height - cropHeight) / 2,
-          cropWidth,
-          cropHeight,
-          0,
-          0,
-          cropWidth,
-          cropHeight
-        );
-        canvas.toBlob((blob) => {
-          const croppedUrl = URL.createObjectURL(blob);
-          resolve(croppedUrl);
-        });
-      };
-    });
   };
 
   const calculateCenterAndZoom = (images) => {
@@ -629,71 +402,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     return Math.sqrt(lngDiff * lngDiff + latDiff * latDiff);
   };
 
-  // Reddotmarker
-  const RedDotMarker = ({ dot, position, onDragEnd }) => {
-    const [currentPosition, setCurrentPosition] = useState(position);
-
-    useEffect(() => {
-      setCurrentPosition(position);
-    }, [position]);
-
-    return (
-      <div
-        className="red-dot-marker"
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          transform: `translate(${currentPosition[0]}px, ${currentPosition[1]}px)`,
-          cursor: "grab",
-          zIndex: 1,
-          touchAction: "none",
-          userSelect: "none",
-          width: "30px", // Match image width
-          height: "30px", // Match image height
-          display: "flex", // Add flex display
-          alignItems: "center", // Center vertically
-          justifyContent: "center", // Center horizontally
-          transform: `translate(${currentPosition[0] - 15}px, ${
-            currentPosition[1] - 15
-          }px)`, // Offset by half width/height
-        }}
-        draggable="true"
-        onDragStart={(e) => {
-          e.dataTransfer.setDragImage(new Image(), 0, 0);
-        }}
-        onDrag={(e) => {
-          if (e.clientX === 0 && e.clientY === 0) return;
-
-          const mapContainer = map.current.getContainer();
-          const rect = mapContainer.getBoundingClientRect();
-          const newX = e.clientX - rect.left;
-          const newY = e.clientY - rect.top;
-
-          setCurrentPosition([newX, newY]);
-        }}
-        onDragEnd={(e) => {
-          if (map.current) {
-            const newGeoCoords = map.current.unproject(currentPosition);
-            onDragEnd(dot.id, [newGeoCoords.lng, newGeoCoords.lat]);
-          }
-        }}
-      >
-        <img
-          src={dot.icon}
-          alt="location marker"
-          style={{
-            width: "30px",
-            height: "30px",
-            pointerEvents: "none",
-            transform: "none", // Remove previous transform
-          }}
-          draggable={false}
-        />
-      </div>
-    );
-  };
-
   // all useEffects
   useEffect(() => {
     initializeMap();
@@ -770,6 +478,18 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
           ref={mapContainer}
           style={{ width: "900px", height: "1260px", position: "relative" }}
           className="relative mb-4"
+          onClick={(e) => {
+            // Only deselect if clicking directly on the map container
+            if (
+              e.target === e.currentTarget ||
+              e.target.classList.contains("mapboxgl-canvas")
+            ) {
+              setActiveMarkerId(null);
+              setMarkers((prev) =>
+                prev.map((marker) => ({ ...marker, isActive: false }))
+              );
+            }
+          }}
         >
           {markers.map((marker, index) => (
             <ImageMarker
@@ -777,9 +497,9 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
               image={marker}
               style={marker.style}
               isActive={marker.id === activeMarkerId}
-              onResize={handleResize}
               onClick={handleMarkerClick}
               onDragEnd={handleDragEnd}
+              map={map.current}
             />
           ))}
           {redDots.map((dot) => {
@@ -791,13 +511,13 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
                 key={dot.id}
                 dot={dot}
                 position={[pixelPosition.x, pixelPosition.y]}
+                mapRef={map} // Add this prop
                 onDragEnd={(dotId, newCoords) => {
                   setRedDots((prev) =>
                     prev.map((d) =>
                       d.id === dotId ? { ...d, coordinates: newCoords } : d
                     )
                   );
-                  // Update lines after moving red dot
                   updateLines();
                 }}
               />
@@ -867,41 +587,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       </div>
       <style>
         {`.mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib {display: none !important;}
-          .resize-handle {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background-color: white;
-            border-radius: 2px;
-            border: 1px solid lightblue;
-            transition: background-color 0.2s;
-          }
-          .resize-handle:hover {
-            background-color: blue;
-          }
-          .resize-handle.top-left { 
-            top: -5px; 
-            left: -5px; 
-            cursor: nw-resize; 
-          }
-          .resize-handle.top-right { 
-            top: -5px; 
-            right: -5px; 
-            cursor: ne-resize; 
-          }
-          .resize-handle.bottom-left { 
-            bottom: -5px; 
-            left: -5px; 
-            cursor: sw-resize; 
-          }
-          .resize-handle.bottom-right { 
-            bottom: -5px; 
-            right: -5px; 
-            cursor: se-resize; 
-          }
-          .red-dot-marker {
-            transition: transform 0.1s ease-out;
-          }
           .red-dot-marker.dragging {
             opacity: 0.8;
             transition: none;
