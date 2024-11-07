@@ -319,7 +319,10 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         // Three pictures: triangle
         const triangleOffsets = [
           { x: 0, y: -markerHeight / 2 - minPadding }, // Top
-          { x: -markerWidth / 2 - minPadding, y: markerHeight / 2 + minPadding }, // Bottom left
+          {
+            x: -markerWidth / 2 - minPadding,
+            y: markerHeight / 2 + minPadding,
+          }, // Bottom left
           { x: markerWidth / 2 + minPadding, y: markerHeight / 2 + minPadding }, // Bottom right
         ];
         adjustedPos.x += triangleOffsets[index].x;
@@ -333,8 +336,14 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       }
 
       // Ensure the adjusted position stays within viewport
-      adjustedPos.x = Math.max(markerWidth / 2 + minPadding, Math.min(mapWidth - markerWidth / 2 - minPadding, adjustedPos.x));
-      adjustedPos.y = Math.max(markerHeight / 2 + minPadding, Math.min(mapHeight - markerHeight / 2 - minPadding, adjustedPos.y));
+      adjustedPos.x = Math.max(
+        markerWidth / 2 + minPadding,
+        Math.min(mapWidth - markerWidth / 2 - minPadding, adjustedPos.x)
+      );
+      adjustedPos.y = Math.max(
+        markerHeight / 2 + minPadding,
+        Math.min(mapHeight - markerHeight / 2 - minPadding, adjustedPos.y)
+      );
 
       const constrainedCoords = map.unproject([adjustedPos.x, adjustedPos.y]);
 
@@ -557,6 +566,55 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     }
   };
 
+  // Add this new handler
+  const handleRemoveImageMarker = useCallback(
+    (markerId) => {
+      const markerIndex = markers.findIndex((marker) => marker.id === markerId);
+
+      // Remove the marker
+      setMarkers((prev) => prev.filter((marker) => marker.id !== markerId));
+
+      // Remove the connecting line
+      if (map.current) {
+        const lineId = `line-${markerIndex}`;
+        if (map.current.getSource(lineId)) {
+          map.current.removeLayer(lineId);
+          map.current.removeSource(lineId);
+        }
+      }
+
+      // Reset active marker if it was the one removed
+      if (activeMarkerId === markerId) {
+        setActiveMarkerId(null);
+      }
+    },
+    [markers, activeMarkerId]
+  );
+
+  const handleRemoveRedDotMarker = useCallback(
+    (dotId) => {
+      const dotIndex = redDots.findIndex((dot) => dot.id === dotId);
+
+      // Remove the red dot
+      setRedDots((prev) => prev.filter((dot) => dot.id !== dotId));
+
+      // Remove the connecting line
+      if (map.current) {
+        const lineId = `line-${dotIndex}`;
+        if (map.current.getSource(lineId)) {
+          map.current.removeLayer(lineId);
+          map.current.removeSource(lineId);
+        }
+      }
+
+      // Reset selected dot if it was the one removed
+      if (selectedDotId === dotId) {
+        setSelectedDotId(null);
+      }
+    },
+    [redDots, selectedDotId]
+  );
+
   return (
     <div
       className="flex flex-col items-center"
@@ -589,6 +647,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
               isActive={marker.id === activeMarkerId}
               onClick={handleMarkerClick}
               onDragEnd={handleDragEnd}
+              onRemove={handleRemoveImageMarker}
               map={map.current}
             />
           ))}
@@ -601,7 +660,8 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
                 key={dot.id}
                 dot={dot}
                 position={[pixelPosition.x, pixelPosition.y]}
-                mapRef={map} // Add this prop
+                mapRef={map}
+                onRemove={handleRemoveRedDotMarker}
                 onDragEnd={(dotId, newCoords) => {
                   setRedDots((prev) =>
                     prev.map((d) =>

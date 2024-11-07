@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import RemoveButton from "./RemoveButton";
 
 const RedDotMarker = ({
   dot,
@@ -7,9 +8,15 @@ const RedDotMarker = ({
   mapRef,
   onClick,
   isSelected,
+  onRemove,
 }) => {
   // Add mapRef prop
   const [currentPosition, setCurrentPosition] = useState(position);
+
+  const handleRemove = (e) => {
+    e.stopPropagation();
+    onRemove(dot.id);
+  };
 
   useEffect(() => {
     setCurrentPosition(position);
@@ -74,6 +81,19 @@ const RedDotMarker = ({
         }}
         draggable={false}
       />
+      {isSelected && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-20px",
+            left: "75%",
+            transform: "translateX(-50%)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <RemoveButton onClick={handleRemove} />
+        </div>
+      )}
     </div>
   );
 };
