@@ -9,11 +9,10 @@ const FileUpload = () => {
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
     const fileArray = files.map((file) => ({
-        file, // Store the actual File object
-        url: URL.createObjectURL(file), // Store the image preview URL
-      }));
+      file, // Store the actual File object
+      url: URL.createObjectURL(file), // Store the image preview URL
+    }));
     setSelectedImages((prevImages) => prevImages.concat(fileArray));
-
 
     // Free memory when the images are removed
     e.target.value = null;
