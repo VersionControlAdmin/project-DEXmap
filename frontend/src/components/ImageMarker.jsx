@@ -3,7 +3,7 @@ import "./ImageMarker.css"; // Make sure to create this CSS file
 
 const ImageMarker = ({ image, style, isActive, onClick, onDragEnd, map }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const positionRef = useRef(image.coordinates);
+  const [position, setPosition] = useState(image.coordinates);
   const [pixelPosition, setPixelPosition] = useState(() => {
     if (map) {
       const pos = map.project(image.coordinates);
@@ -12,12 +12,41 @@ const ImageMarker = ({ image, style, isActive, onClick, onDragEnd, map }) => {
     return [0, 0];
   });
 
+  // Set initial coordinates with offset
+  useEffect(() => {
+    if (!map) return;
+
+    // const mapBounds = map.getBounds();
+    // const offsetLng =
+    //   (mapBounds.getNorthEast().lng - image.coordinates[0]) * 0.3;
+    // const offsetLat =
+    //   (mapBounds.getNorthEast().lat - image.coordinates[1]) * 0.3;
+
+    // const adjustedCoords = [
+    //   image.coordinates[0] + offsetLng,
+    //   image.coordinates[1] + offsetLat,
+    // ];
+
+    const adjustedCoords = [
+          image.coordinates[0],
+          image.coordinates[1],
+        ];
+
+    setPosition(adjustedCoords);
+    const pos = map.project(adjustedCoords);
+    setPixelPosition([pos.x, pos.y]);
+
+    requestAnimationFrame(() => {
+      onDragEnd(image.id, adjustedCoords);
+    });
+  }, []);
+
   // Update pixel position when map moves
   useEffect(() => {
     if (!map) return;
 
     const updatePosition = () => {
-      const pos = map.project(image.coordinates);
+      const pos = map.project(position);
       setPixelPosition([pos.x, pos.y]);
     };
 
@@ -29,7 +58,7 @@ const ImageMarker = ({ image, style, isActive, onClick, onDragEnd, map }) => {
       map.off("move", updatePosition);
       map.off("zoom", updatePosition);
     };
-  }, [map, image.coordinates]);
+  }, [map, position]);
 
   const handleDragStart = (e) => {
     e.preventDefault();
@@ -45,16 +74,32 @@ const ImageMarker = ({ image, style, isActive, onClick, onDragEnd, map }) => {
     const newX = e.clientX - rect.left;
     const newY = e.clientY - rect.top;
 
+    // Update both pixel position and coordinates in one go
     setPixelPosition([newX, newY]);
-    onClick(image.id);
+    const newGeoCoords = map.unproject([newX, newY]);
+    setPosition([newGeoCoords.lng, newGeoCoords.lat]);
+
+    // Only update coordinates if they've actually changed
+    if (
+      newGeoCoords.lng !== image.coordinates[0] ||
+      newGeoCoords.lat !== image.coordinates[1]
+    ) {
+      onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
+    }
   };
+
+  useEffect(() => {
+    const newGeoCoords = map.unproject(pixelPosition);
+    onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
+  }, []);
 
   const handleDragEnd = () => {
     if (!isDragging || !map) return;
 
+    // Final update of coordinates
     const newGeoCoords = map.unproject(pixelPosition);
-    positionRef.current = [newGeoCoords.lng, newGeoCoords.lat];
-    onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
+    setPosition([newGeoCoords.lng, newGeoCoords.lat]);
+    // onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
     setIsDragging(false);
     onClick(null);
   };

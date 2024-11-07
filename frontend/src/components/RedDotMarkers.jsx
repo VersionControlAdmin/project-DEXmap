@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
 
-const RedDotMarker = ({ dot, position, onDragEnd, mapRef }) => {  // Add mapRef prop
+const RedDotMarker = ({
+  dot,
+  position,
+  onDragEnd,
+  mapRef,
+  onClick,
+  isSelected,
+}) => {
+  // Add mapRef prop
   const [currentPosition, setCurrentPosition] = useState(position);
 
   useEffect(() => {
@@ -9,16 +17,16 @@ const RedDotMarker = ({ dot, position, onDragEnd, mapRef }) => {  // Add mapRef 
 
   return (
     <div
-      className="red-dot-marker"
+      className={`red-dot-marker ${isSelected ? "selected" : ""}`}
       style={{
         position: "absolute",
         left: 0,
         top: 0,
         transform: `translate(${currentPosition[0] - 15}px, ${
           currentPosition[1] - 15
-        }px)`,  // Remove duplicate transform
+        }px)`,
         cursor: "grab",
-        zIndex: 1,
+        zIndex: isSelected ? 50 : 1,
         touchAction: "none",
         userSelect: "none",
         width: "30px",
@@ -34,18 +42,24 @@ const RedDotMarker = ({ dot, position, onDragEnd, mapRef }) => {  // Add mapRef 
       onDrag={(e) => {
         if (e.clientX === 0 && e.clientY === 0) return;
 
-        const mapContainer = mapRef.current.getContainer();  // Use mapRef instead
+        const mapContainer = mapRef.current.getContainer();
         const rect = mapContainer.getBoundingClientRect();
         const newX = e.clientX - rect.left;
         const newY = e.clientY - rect.top;
 
         setCurrentPosition([newX, newY]);
+        const newGeoCoords = mapRef.current.unproject([newX, newY]);
+        onDragEnd(dot.id, [newGeoCoords.lng, newGeoCoords.lat]);
       }}
       onDragEnd={(e) => {
-        if (mapRef.current) {  // Use mapRef instead
+        if (mapRef.current) {
           const newGeoCoords = mapRef.current.unproject(currentPosition);
           onDragEnd(dot.id, [newGeoCoords.lng, newGeoCoords.lat]);
         }
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
       }}
     >
       <img
@@ -56,6 +70,7 @@ const RedDotMarker = ({ dot, position, onDragEnd, mapRef }) => {  // Add mapRef 
           height: "30px",
           pointerEvents: "none",
           transform: "none",
+          filter: isSelected ? "brightness(1.2)" : "none",
         }}
         draggable={false}
       />

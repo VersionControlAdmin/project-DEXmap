@@ -14,12 +14,14 @@ import html2canvas from "html2canvas";
 import axios from "axios";
 import RedDotMarker from "./RedDotMarkers";
 import ImageMarker from "./ImageMarker";
+import IconMarkerSelector from "./IconMarkerSelector";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const [markers, setMarkers] = useState([]);
   const [redDots, setRedDots] = useState([]);
+  const [selectedDotId, setSelectedDotId] = useState(null);
   const [activeMarkerId, setActiveMarkerId] = useState(null); // Track the active marker
   const [markerSizesWidth, setMarkerSizesWidth] = useState([]);
   const [markerSizesHeight, setMarkerSizesHeight] = useState([]);
@@ -46,6 +48,19 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       }))
     );
   }, []);
+
+  //handle Icon dot actions & selections
+  const handleDotClick = (dotId) => {
+    setSelectedDotId(dotId);
+  };
+
+  // Add handler for icon selection
+  const handleIconSelect = (icon) => {
+    setRedDots((prev) =>
+      prev.map((dot) => (dot.id === selectedDotId ? { ...dot, icon } : dot))
+    );
+    setSelectedDotId(null);
+  };
 
   const updateLines = useCallback(() => {
     if (!map.current) return;
@@ -79,12 +94,21 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
 
   // Modified toggleUIVisibility
   const toggleUIVisibility = useCallback(() => {
+    // Hide/show Mapbox controls
+    const mapControls = document.querySelectorAll(
+      ".mapboxgl-control-container"
+    );
+    mapControls.forEach((control) => {
+      control.style.display = uiElements.controls ? "none" : "block";
+    });
+
     setUiElements((prev) => ({
       controls: !prev.controls,
-      handles: !prev.handles,
-      buttons: !prev.buttons,
+      handles: !prev.controls,
+      buttons: !prev.controls,
     }));
-  }, []);
+    setActiveMarkerId(null);
+  }, [uiElements.controls]);
 
   const calculateInitialMarkerSizes = (images) => {
     const fixedHeight = Math.max(
@@ -101,11 +125,8 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     });
     const widths = sizes.map((size) => size.width);
     const heights = sizes.map((size) => size.height);
-    console.log(widths, heights);
-    console.log(markerSizesHeight, markerSizesWidth);
     setMarkerSizesWidth(widths);
     setMarkerSizesHeight(heights);
-    console.log(markerSizesHeight, markerSizesWidth);
   };
 
   const updateGeotags = async (images) => {
@@ -265,11 +286,80 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     map.current.addControl(exportControl, "top-right");
   };
 
+  const calculateOptimalDistribution = (images, mapBounds, map) => {
+    const minPadding = 100; // Minimum padding around each image and red dot
+    const mapWidth = map.getContainer().offsetWidth;
+    const mapHeight = map.getContainer().offsetHeight;
+
+    return images.map((image, index) => {
+      const baseCoords = image.coordinates;
+      const screenPos = map.project(baseCoords);
+      const totalImages = images.length;
+
+      // Get the size of the image marker
+      const markerWidth = markerSizesWidth[index];
+      const markerHeight = markerSizesHeight[index];
+
+      let adjustedPos = { x: screenPos.x, y: screenPos.y };
+
+      if (totalImages === 1) {
+        // One picture: top right
+        adjustedPos.x += markerWidth / 2 + minPadding;
+        adjustedPos.y -= markerHeight / 2 + minPadding;
+      } else if (totalImages === 2) {
+        // Two pictures: bottom left and top right
+        if (index === 0) {
+          adjustedPos.x -= markerWidth / 2 + minPadding;
+          adjustedPos.y += markerHeight / 2 + minPadding;
+        } else {
+          adjustedPos.x += markerWidth / 2 + minPadding;
+          adjustedPos.y -= markerHeight / 2 + minPadding;
+        }
+      } else if (totalImages === 3) {
+        // Three pictures: triangle
+        const triangleOffsets = [
+          { x: 0, y: -markerHeight / 2 - minPadding }, // Top
+          { x: -markerWidth / 2 - minPadding, y: markerHeight / 2 + minPadding }, // Bottom left
+          { x: markerWidth / 2 + minPadding, y: markerHeight / 2 + minPadding }, // Bottom right
+        ];
+        adjustedPos.x += triangleOffsets[index].x;
+        adjustedPos.y += triangleOffsets[index].y;
+      } else {
+        // Four or more pictures: circle
+        const angle = (index / totalImages) * 2 * Math.PI;
+        const radius = Math.max(markerWidth, markerHeight) * 1.5 + minPadding; // Ensure no overlap
+        adjustedPos.x += radius * Math.cos(angle);
+        adjustedPos.y += radius * Math.sin(angle);
+      }
+
+      // Ensure the adjusted position stays within viewport
+      adjustedPos.x = Math.max(markerWidth / 2 + minPadding, Math.min(mapWidth - markerWidth / 2 - minPadding, adjustedPos.x));
+      adjustedPos.y = Math.max(markerHeight / 2 + minPadding, Math.min(mapHeight - markerHeight / 2 - minPadding, adjustedPos.y));
+
+      const constrainedCoords = map.unproject([adjustedPos.x, adjustedPos.y]);
+
+      return {
+        ...image,
+        adjustedCoordinates: [constrainedCoords.lng, constrainedCoords.lat],
+      };
+    });
+  };
+
+  // Modify addMoveableUserPictures to use the new distribution logic
   const addMoveableUserPictures = (images) => {
+    if (!map.current || !images.length) return;
+
+    const distributedImages = calculateOptimalDistribution(
+      images,
+      map.current.getBounds(),
+      map.current
+    );
+
     setMarkers(
-      images.map((image, index) => ({
+      distributedImages.map((image, index) => ({
         id: `marker-${index}`,
         ...image,
+        coordinates: image.adjustedCoordinates,
         isActive: false,
         style: {
           width: markerSizesWidth[index],
@@ -316,7 +406,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       if (!marker || !redDot) return;
 
       const lineId = `line-${index}`;
-
       // Check if we already have this line
       if (!map.current.getSource(lineId)) {
         // Add new source and layer
@@ -330,7 +419,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
             },
           },
         });
-
         map.current.addLayer({
           id: lineId,
           type: "line",
@@ -342,6 +430,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         });
       }
     });
+    updateLines();
   };
 
   // Not working, needs an update
@@ -485,6 +574,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
               e.target.classList.contains("mapboxgl-canvas")
             ) {
               setActiveMarkerId(null);
+              setSelectedDotId(null);
               setMarkers((prev) =>
                 prev.map((marker) => ({ ...marker, isActive: false }))
               );
@@ -520,9 +610,19 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
                   );
                   updateLines();
                 }}
+                onClick={() => handleDotClick(dot.id)}
+                isSelected={selectedDotId === dot.id}
               />
             );
           })}
+          {selectedDotId && (
+            <IconMarkerSelector
+              position={map.current.project(
+                redDots.find((dot) => dot.id === selectedDotId).coordinates
+              )}
+              onSelectIcon={handleIconSelect}
+            />
+          )}
           <div
             className="w-full flex flex-col items-center justify-center p-4 z-10"
             style={{
