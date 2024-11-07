@@ -1,6 +1,5 @@
-
 const IconMarkerSelection = () => {
-    return();
-}
+  return <></>;
+};
 
 export default IconMarkerSelection;
