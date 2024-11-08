@@ -30,6 +30,9 @@ const ImageMarker = ({
   const [imageSize, setImageSize] = useState(style); // Add this state
   const [scale, setScale] = useState(1); // Add this state for scaling
 
+  //   useEffect(() => {
+  //     console.log("image", image);
+  //   }, [image]);
   // Add this function to update dimensions when image changes
   const updateImageDimensions = (imageUrl) => {
     const img = new Image();
