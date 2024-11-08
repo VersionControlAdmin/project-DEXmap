@@ -16,18 +16,18 @@ export default function IconMarkerSelector({ onSelectIcon, position }) {
   const [selectedIcon, setSelectedIcon] = useState(null);
 
   const handleSelectIcon = (iconId) => {
-    const selectedIconObj = icons.find(icon => icon.id === iconId);
+    const selectedIconObj = icons.find((icon) => icon.id === iconId);
     setSelectedIcon(iconId);
     onSelectIcon(selectedIconObj.src); // Send the icon source instead of just ID
   };
 
   return (
-    <div 
+    <div
       className="absolute z-50"
       style={{
         left: position.x,
         top: position.y - 60,
-        transform: 'translate(-50%, -50%)'
+        transform: "translate(-50%, -50%)",
       }}
     >
       <div className="flex flex-col items-center">

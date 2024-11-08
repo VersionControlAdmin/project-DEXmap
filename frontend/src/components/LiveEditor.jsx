@@ -15,6 +15,8 @@ import axios from "axios";
 import RedDotMarker from "./RedDotMarkers";
 import ImageMarker from "./ImageMarker";
 import IconMarkerSelector from "./IconMarkerSelector";
+import MapTextSection from "./MapTextSection";
+import UploadPicturesButton from './UploadPicturesButton'
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -559,7 +561,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       setTextSection(
         city,
         country,
-        `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+        `${lat.toFixed(4)}°N / ${lng.toFixed(4)}°E`
       );
     } catch (error) {
       console.error("Error fetching location data:", error);
@@ -616,6 +618,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   );
 
   return (
+    // <UploadPicturesButton onUpload={handleUpload} />
     <div
       className="flex flex-col items-center"
       style={{ padding: "50px", backgroundColor: "#f5f5dc" }}
@@ -683,44 +686,11 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
               onSelectIcon={handleIconSelect}
             />
           )}
-          <div
-            className="w-full flex flex-col items-center justify-center p-4 z-10"
-            style={{
-              backgroundColor: "#ffffff",
-              height: "calc(100vh / 7)",
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              gap: "10px",
-              borderTopLeftRadius: "20px",
-              borderTopRightRadius: "20px",
-              boxShadow: "0 -4px 8px rgba(0, 0, 0, 0.1)",
-            }}
-          >
-            <div
-              className="text-center font-bold text-4xl font-sans"
-              style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}
-            >
-              {headlineText}
-            </div>
-            <div
-              className="text-center text-2xl font-sans"
-              style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}
-            >
-              {dividerText}
-            </div>
-            <div
-              className="text-center text-lg font-sans"
-              style={{
-                color: "#4a4a4a",
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-              }}
-            >
-              {taglineText}
-            </div>
-          </div>
+          <MapTextSection
+            headlineText={headlineText}
+            dividerText={dividerText}
+            taglineText={taglineText}
+          />
         </div>
       </div>
       <button

@@ -4,6 +4,7 @@ import ImageEditor from "./ImageEditor";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion"; // Add this import
 import RemoveButton from "./RemoveButton";
+import ImageMarkerScaler from "./ImageMarkerScaler";
 
 const ImageMarker = ({
   image,
@@ -26,6 +27,46 @@ const ImageMarker = ({
   const [currentImage, setCurrentImage] = useState(image.url); // State for current image
   const [originalImage] = useState(image.url); // State for original image
   const [isEditing, setIsEditing] = useState(false); // State for editor visibility
+  const [imageSize, setImageSize] = useState(style); // Add this state
+  const [scale, setScale] = useState(1); // Add this state for scaling
+
+  // Add this function to update dimensions when image changes
+  const updateImageDimensions = (imageUrl) => {
+    const img = new Image();
+    img.onload = () => {
+      const aspectRatio = img.width / img.height;
+      let newWidth = style.width * scale; // Apply scale to width
+      let newHeight = newWidth / aspectRatio;
+
+      // Cap the dimensions at 400 px
+      if (newWidth > 400) {
+        newWidth = 400;
+        newHeight = newWidth / aspectRatio;
+      }
+      if (newHeight > 400) {
+        newHeight = 400;
+        newWidth = newHeight * aspectRatio;
+      }
+
+      setImageSize({ width: newWidth, height: newHeight });
+    };
+    img.src = imageUrl;
+  };
+
+  // Update dimensions when currentImage changes
+  useEffect(() => {
+    updateImageDimensions(currentImage);
+  }, [currentImage, scale]);
+
+  // Update dimensions when scale changes
+  useEffect(() => {
+    updateImageDimensions(currentImage);
+  }, [currentImage, scale]);
+
+  // Add handler for scale changes
+  const handleScale = (newScale) => {
+    setScale(newScale);
+  };
 
   // Set initial coordinates with offset
   useEffect(() => {
@@ -145,12 +186,12 @@ const ImageMarker = ({
           isDragging ? "dragging" : ""
         }`}
         style={{
-          ...style,
+          ...imageSize, // Use imageSize instead of style
           position: "absolute",
           left: 0,
           top: 0,
-          transform: `translate(${pixelPosition[0] - style.width / 2}px, ${
-            pixelPosition[1] - style.height / 2
+          transform: `translate(${pixelPosition[0] - imageSize.width / 2}px, ${
+            pixelPosition[1] - imageSize.height / 2
           }px)`,
           cursor: isDragging ? "grabbing" : "grab",
           backgroundImage: `url(${currentImage})`,
@@ -172,26 +213,46 @@ const ImageMarker = ({
           <motion.div
             className="absolute z-10"
             style={{
-              top: `${pixelPosition[1] + style.height / 2 + 5}px`,
-              left: `${pixelPosition[0] + style.width / 2 - 150}px`,
+              top: `${pixelPosition[1] + imageSize.height / 2 + 5}px`,
+              left: `${pixelPosition[0] + imageSize.width / 2 - 100}px`,
             }}
           >
             <Button
-              className="w-[150px] bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-full py-2 px-4 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:scale-105"
+              className="w-[100px] bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-full py-2 px-4 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:scale-105"
               onClick={handleCropAndResize}
             >
               <span className="mr-2">✂️</span>
-              Crop & Resize
+              Crop
             </Button>
           </motion.div>
           <motion.div
             className="absolute z-10"
             style={{
-              top: `${pixelPosition[1] + style.height / 2 + 15}px`,
-              left: `${pixelPosition[0] - style.width / 2 + 27}px`,
+              top: `${
+                pixelPosition[1] +
+                imageSize.height / 2 +
+                (imageSize.width < 150 ? 56 : 15)
+              }px`,
+              left: `${
+                imageSize.width < 150
+                  ? pixelPosition[0] + imageSize.width / 2 - 10
+                  : pixelPosition[0] - imageSize.width / 2 + 27
+              }px`,
             }}
           >
             <RemoveButton onClick={handleRemove} />
+          </motion.div>
+          <motion.div
+            className="absolute z-10"
+            style={{
+              top: `${pixelPosition[1] - imageSize.height / 2 - 50}px`,
+              left: `${pixelPosition[0] - 100}px`,
+            }}
+          >
+            <ImageMarkerScaler
+              onScaleChange={handleScale}
+              initialScale={scale}
+            />
           </motion.div>
         </div>
       )}

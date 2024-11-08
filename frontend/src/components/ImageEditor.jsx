@@ -97,7 +97,6 @@ export default function ImageEditor({ imageUrl, onSave, onCancel }) {
               crop={crop}
               onChange={(c) => setCrop(c)}
               onComplete={(c) => setCompletedCrop(c)}
-              aspect={16 / 9}
             >
               <img ref={imageRef} src={imageUrl} alt="Edit" onLoad={(e) => onImageLoad(e.currentTarget)} />
             </ReactCrop>
