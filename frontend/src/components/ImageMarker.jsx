@@ -42,12 +42,12 @@ const ImageMarker = ({
       let newHeight = newWidth / aspectRatio;
 
       // Cap the dimensions at 400 px
-      if (newWidth > 400) {
-        newWidth = 400;
+      if (newWidth > 600) {
+        newWidth = 600;
         newHeight = newWidth / aspectRatio;
       }
-      if (newHeight > 400) {
-        newHeight = 400;
+      if (newHeight > 600) {
+        newHeight = 600;
         newWidth = newHeight * aspectRatio;
       }
 

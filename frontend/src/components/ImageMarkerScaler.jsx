@@ -1,32 +1,32 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react'
-import * as SliderPrimitive from "@radix-ui/react-slider"
-import { cn } from "@/lib/utils"
+import React, { useState } from "react";
+import * as SliderPrimitive from "@radix-ui/react-slider";
+import { cn } from "@/lib/utils";
 
 export default function ImageMarkerScaler({ onScaleChange, initialScale = 1 }) {
-  const [isActive, setIsActive] = useState(false)
+  const [isActive, setIsActive] = useState(false);
 
   const handleScaleChange = (value) => {
-    const scaleFactor = calculateScaleFactor(value[0])
-    onScaleChange(scaleFactor)
-  }
+    const scaleFactor = calculateScaleFactor(value[0]);
+    onScaleChange(scaleFactor);
+  };
 
   const calculateScaleFactor = (sliderValue) => {
     if (sliderValue <= 50) {
-      return 0.01 + (0.99 * Math.pow(sliderValue / 50, 2))
+      return 0.01 + 0.99 * Math.pow(sliderValue / 50, 2);
     } else {
-      return 1 + ((sliderValue - 50) / 25)
+      return 1 + (sliderValue - 50) / 25;
     }
-  }
+  };
 
   const initialSliderValue = () => {
     if (initialScale <= 1) {
-      return Math.sqrt((initialScale - 0.01) / 0.99) * 50
+      return Math.sqrt((initialScale - 0.01) / 0.99) * 50;
     } else {
-      return ((initialScale - 1) * 25) + 50
+      return (initialScale - 1) * 25 + 50;
     }
-  }
+  };
 
   return (
     <div className="w-[200px]">
@@ -56,5 +56,5 @@ export default function ImageMarkerScaler({ onScaleChange, initialScale = 1 }) {
         </SliderPrimitive.Root>
       </div>
     </div>
-  )
+  );
 }

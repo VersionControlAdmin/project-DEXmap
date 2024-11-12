@@ -18,6 +18,7 @@ import IconMarkerSelector from "./IconMarkerSelector";
 import MapTextSection from "./MapTextSection";
 import UploadPicturesButton from "./UploadPicturesButton";
 import TransmitDataButton from "./TransmitDataButton";
+import LocationForm from "./LocationForm";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -25,9 +26,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [markers, setMarkers] = useState([]);
   const [redDots, setRedDots] = useState([]);
   const [selectedDotId, setSelectedDotId] = useState(null);
-  const [activeMarkerId, setActiveMarkerId] = useState(null); // Track the active marker
-  const [markerSizesWidth, setMarkerSizesWidth] = useState([]);
-  const [markerSizesHeight, setMarkerSizesHeight] = useState([]);
   const [uiElements, setUiElements] = useState({
     controls: true,
     handles: true,
@@ -40,11 +38,13 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [newImages, setNewImages] = useState([]); // To hold new images being uploaded
   const [isImageSizesUpdated, setIsImageSizesUpdated] = useState(false); // Track if sizes are ready
+  const [showLocationForm, setShowLocationForm] = useState(false);
+  const [currentImageWithoutLocation, setCurrentImageWithoutLocation] =
+    useState(null);
 
   // Image Marker Functionality
   // New handler for marker interactions
   const handleMarkerClick = useCallback((markerId) => {
-    setActiveMarkerId(markerId);
     setMarkers((prevMarkers) =>
       prevMarkers.map((marker) => ({
         ...marker,
@@ -137,7 +137,11 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       handles: !prev.controls,
       buttons: !prev.controls,
     }));
-    setActiveMarkerId(null);
+
+    // Deactivate all markers
+    setMarkers((prev) =>
+      prev.map((marker) => ({ ...marker, isActive: false }))
+    );
   }, [uiElements.controls]);
 
   const updateGeotags = async (images) => {
@@ -298,8 +302,8 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       const screenPos = map.project(baseCoords);
       const totalImages = images.length;
       // Get the size of the image marker
-      const markerWidth = markerSizesWidth[index];
-      const markerHeight = markerSizesHeight[index];
+      const markerWidth = image.width || 180;
+      const markerHeight = image.height || 240;
       let adjustedPos = { x: screenPos.x, y: screenPos.y };
       console.log("original pos", adjustedPos);
       if (totalImages === 1 || !isInitialDistribution) {
@@ -362,16 +366,13 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
 
     const newMarkers = images.map((image, index) => {
       const currentId = nextMarkerId + index;
-      console.log("markerSizesWidth", markerSizesWidth);
       return {
         id: `imageMarker-${currentId}`,
         ...image,
         coordinates: image.adjustedCoordinates,
         isActive: false,
-        style: {
-          width: markerSizesWidth[markers.length + index] || 180,
-          height: markerSizesHeight[markers.length + index] || 240,
-        },
+        width: image.width || 180,
+        height: image.height || 240,
       };
     });
 
@@ -539,19 +540,9 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         setSelectedImages((prev) =>
           prev.filter((_, index) => index !== markerIndex)
         );
-        setMarkerSizesWidth((prev) =>
-          prev.filter((_, index) => index !== markerIndex)
-        );
-        setMarkerSizesHeight((prev) =>
-          prev.filter((_, index) => index !== markerIndex)
-        );
-      }
-
-      if (activeMarkerId === markerId) {
-        setActiveMarkerId(null);
       }
     },
-    [markers, activeMarkerId]
+    [markers]
   );
 
   const handleRemoveRedDotMarker = useCallback(
@@ -578,60 +569,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     [redDots, selectedDotId]
   );
 
-  // const handleUpload = async (files) => {
-  //   try {
-  //     const newImages = files.map((file) => ({
-  //       file: file,
-  //       url: URL.createObjectURL(file),
-  //     }));
-
-  //     const processedImages = await updateGeotags(newImages);
-
-  //     for (const image of processedImages) {
-  //       await calculateAndSetImageMarkerSize(image);
-  //     }
-
-  //     // Add new images to selectedImages
-  //     setSelectedImages((prev) => [...prev, ...processedImages]);
-
-  //     if (markers.length === 0 && redDots.length === 0) {
-  //       const distributedInitialImages = calculateOptimalDistribution(
-  //         processedImages,
-  //         map.current.getBounds(),
-  //         map.current,
-  //         true
-  //       );
-  //       addRedDotMarkers(distributedInitialImages);
-  //       addMoveableUserPictures(distributedInitialImages);
-  //       setIsInitialized(true);
-  //     } else {
-  //       const distributedNewImages = calculateOptimalDistribution(
-  //         processedImages,
-  //         map.current.getBounds(),
-  //         map.current,
-  //         false
-  //       );
-  //       console.log(distributedNewImages);
-  //       addMoveableUserPictures(distributedNewImages);
-  //       addRedDotMarkers(processedImages);
-  //     }
-
-  //     addConnectingLines();
-
-  //     const { center, zoom } = calculateCenterAndZoom([
-  //       ...selectedImages,
-  //       ...processedImages,
-  //     ]);
-  //     map.current.flyTo({
-  //       center: [center.lng, center.lat],
-  //       zoom: zoom,
-  //       duration: 1000,
-  //     });
-  //   } catch (error) {
-  //     console.error("Error processing uploaded images:", error);
-  //   }
-  // };
-
   const handleUpload = async (files) => {
     try {
       const newImages = files.map((file) => ({
@@ -640,17 +577,80 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       }));
 
       const processedImages = await updateGeotags(newImages);
-      setNewImages(processedImages); // Set new images to a separate state
-      setSelectedImages((prev) => [...prev, ...processedImages]);
 
-      // Calculate and set marker sizes for each processed image
-      await Promise.all(
-        processedImages.map((image) => calculateAndSetImageMarkerSize(image))
+      // Check for images without coordinates
+      const imagesWithoutLocation = processedImages.filter(
+        (img) => !img.coordinates
+      );
+      if (imagesWithoutLocation.length > 0) {
+        setCurrentImageWithoutLocation(imagesWithoutLocation[0]);
+        setShowLocationForm(true);
+        return;
+      }
+
+      // Calculate sizes and add them to the processed images
+      const imagesWithSizes = await Promise.all(
+        processedImages.map(async (image) => {
+          const sizes = await calculateAndSetImageMarkerSize(image);
+          return {
+            ...image,
+            width: sizes.width,
+            height: sizes.height,
+          };
+        })
       );
 
-      setIsImageSizesUpdated(true); // Once sizes are updated, trigger the next steps
+      setNewImages(imagesWithSizes);
+      setSelectedImages((prev) => [...prev, ...imagesWithSizes]);
+      setIsImageSizesUpdated(true);
     } catch (error) {
       console.error("Error processing uploaded images:", error);
+    }
+  };
+
+  const handleLocationSubmit = (location) => {
+    if (currentImageWithoutLocation) {
+      const updatedImage = {
+        ...currentImageWithoutLocation,
+        coordinates: [location.lng, location.lat],
+      };
+
+      setSelectedImages((prev) => [...prev, updatedImage]);
+      setShowLocationForm(false);
+      setCurrentImageWithoutLocation(null);
+
+      const { center, zoom } = calculateCenterAndZoom([
+        ...selectedImages,
+        updatedImage,
+      ]);
+
+      map.current.flyTo({
+        center: [center.lng, center.lat],
+        zoom: zoom,
+        duration: 0,
+      });
+
+      // Process the image with the new coordinates
+      const distributedImage = calculateOptimalDistribution(
+        [updatedImage],
+        map.current.getBounds(),
+        map.current,
+        markers.length === 0
+      );
+
+      addRedDotMarkers(distributedImage);
+      addMoveableUserPictures(distributedImage);
+      // console.log("selectedImages[0]", selectedImages[0].coordinates);
+      if (
+        selectedImages[0]?.coordinates &&
+        selectedImages[0].coordinates.length > 0
+      ) {
+        updateTextSectionWithLocation(selectedImages[0].coordinates);
+      }
+      console.log("updatedImage", updatedImage.coordinates);
+      if (updatedImage.coordinates != []) {
+        updateTextSectionWithLocation(updatedImage.coordinates);
+      }
     }
   };
 
@@ -699,25 +699,15 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       setNewImages([]);
       setIsImageSizesUpdated(false);
     }
-  }, [
-    isImageSizesUpdated,
-    newImages,
-    markerSizesWidth,
-    markerSizesHeight,
-    markers,
-    redDots,
-  ]); // Dependencies include all relevant states to ensure they are updated
+  }, [isImageSizesUpdated, newImages, markers, redDots]); // Dependencies include all relevant states to ensure they are updated
 
   const calculateAndSetImageMarkerSize = async (image) => {
-    // Calculate fixed height based on total images (existing + new one)
-    console.log("calculateAndSetImageMarkerSize - Image", image);
     const fixedHeight = Math.max(
       180,
       mapContainer.current.clientHeight / (markers.length + 7)
     );
 
     try {
-      // Create and load the image
       const loadedImage = await new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
@@ -725,32 +715,22 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         img.src = image.url;
       });
 
-      // Calculate dimensions
       const aspectRatio = loadedImage.naturalWidth / loadedImage.naturalHeight;
       const calculatedWidth = fixedHeight * aspectRatio;
-      const newSize = { width: calculatedWidth, height: fixedHeight };
 
-      // Update state arrays
-
-      setMarkerSizesWidth((prev) => [...prev, calculatedWidth]);
-      setMarkerSizesHeight((prev) => [...prev, fixedHeight]);
-      console.log("Set new size", markerSizesWidth, markerSizesHeight);
-
-      return newSize;
+      // Return the dimensions instead of setting them in separate arrays
+      return {
+        width: calculatedWidth,
+        height: fixedHeight,
+      };
     } catch (error) {
       console.error("Error calculating image size:", error);
-      // Provide fallback dimensions if image loading fails
-      const fallbackSize = { width: 180, height: 240 };
-      setMarkerSizesWidth((prev) => [...prev, fallbackSize.width]);
-      setMarkerSizesHeight((prev) => [...prev, fallbackSize.height]);
-      return fallbackSize;
+      return {
+        width: 180,
+        height: 240,
+      };
     }
   };
-
-  useEffect(() => {
-    console.log("MarkerSizesWidth", markerSizesWidth);
-    console.log("MarkerSizesHeight", markerSizesHeight);
-  }, [markerSizesWidth, markerSizesHeight]);
 
   // Add a new handler for drag
   const handleDrag = useCallback((markerId, newCoords) => {
@@ -761,6 +741,24 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     );
     updateLines();
   }, []);
+
+  // Update map click handler to deactivate all markers
+  const handleMapClick = useCallback((e) => {
+    if (
+      e.target === e.currentTarget ||
+      e.target.classList.contains("mapboxgl-canvas")
+    ) {
+      setMarkers((prev) =>
+        prev.map((marker) => ({ ...marker, isActive: false }))
+      );
+      setSelectedDotId(null);
+    }
+  }, []);
+
+  const handleLocationFormClose = () => {
+    setShowLocationForm(false);
+    setCurrentImageWithoutLocation(null);
+  };
 
   return (
     <div
@@ -779,26 +777,14 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
             ref={mapContainer}
             style={{ width: "900px", height: "1260px", position: "relative" }}
             className="relative mb-4"
-            onClick={(e) => {
-              // Only deselect if clicking directly on the map container
-              if (
-                e.target === e.currentTarget ||
-                e.target.classList.contains("mapboxgl-canvas")
-              ) {
-                setActiveMarkerId(null);
-                setSelectedDotId(null);
-                setMarkers((prev) =>
-                  prev.map((marker) => ({ ...marker, isActive: false }))
-                );
-              }
-            }}
+            onClick={handleMapClick}
           >
-            {markers.map((marker, index) => (
+            {markers.map((marker) => (
               <ImageMarker
                 key={marker.id}
                 image={marker}
-                style={marker.style}
-                isActive={marker.id === activeMarkerId}
+                style={{ width: marker.width, height: marker.height }}
+                isActive={marker.isActive}
                 onClick={handleMarkerClick}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
@@ -889,6 +875,14 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
             `}
         </style>
       </div>
+
+      {showLocationForm && (
+        <LocationForm
+          onSubmit={handleLocationSubmit}
+          onClose={handleLocationFormClose}
+          image={currentImageWithoutLocation}
+        />
+      )}
     </div>
   );
 };
