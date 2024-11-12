@@ -19,6 +19,7 @@ import MapTextSection from "./MapTextSection";
 import UploadPicturesButton from "./UploadPicturesButton";
 import TransmitDataButton from "./TransmitDataButton";
 import LocationForm from "./LocationForm";
+import BottomActionButtons from "./BottomActionButtons";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -39,8 +40,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [newImages, setNewImages] = useState([]); // To hold new images being uploaded
   const [isImageSizesUpdated, setIsImageSizesUpdated] = useState(false); // Track if sizes are ready
   const [showLocationForm, setShowLocationForm] = useState(false);
-  const [currentImageWithoutLocation, setCurrentImageWithoutLocation] =
-    useState(null);
+  const [imagesWithoutLocation, setImagesWithoutLocation] = useState([]); // Replace currentImageWithoutLocation
 
   // Image Marker Functionality
   // New handler for marker interactions
@@ -380,25 +380,38 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     setNextMarkerId(nextMarkerId + images.length);
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (isPoster = false) => {
     if (!mapContainer.current) return;
 
     // Hide UI elements before downloading
     toggleUIVisibility(false);
 
-    const mapElement = mapContainer.current;
-    html2canvas(mapElement, {
+    // Select the appropriate element based on isPoster
+    const elementToCapture = isPoster
+      ? document.querySelector(".exportable-map-container")
+      : mapContainer.current;
+
+    html2canvas(elementToCapture, {
       scale: 4, // Increase scale for high resolution
       useCORS: true, // Handle cross-origin images
-    }).then((canvas) => {
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png");
-      link.download = "high-quality-map.png";
-      link.click();
+      backgroundColor: "#f8fafc", // Match bg-slate-50 color
+      logging: true, // Helpful for debugging
+    })
+      .then((canvas) => {
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = isPoster
+          ? "high-quality-poster.png"
+          : "high-quality-map.png";
+        link.click();
 
-      // Re-show UI elements after download
-      toggleUIVisibility(true);
-    });
+        // Re-show UI elements after download
+        toggleUIVisibility(true);
+      })
+      .catch((error) => {
+        console.error("Error generating download:", error);
+        toggleUIVisibility(true);
+      });
   };
 
   const addRedDotMarkers = (images) => {
@@ -579,24 +592,20 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       const processedImages = await updateGeotags(newImages);
 
       // Check for images without coordinates
-      const imagesWithoutLocation = processedImages.filter(
+      const noLocationImages = processedImages.filter(
         (img) => !img.coordinates
       );
-      if (imagesWithoutLocation.length > 0) {
-        setCurrentImageWithoutLocation(imagesWithoutLocation[0]);
+      if (noLocationImages.length > 0) {
+        setImagesWithoutLocation(noLocationImages);
         setShowLocationForm(true);
         return;
       }
 
-      // Calculate sizes and add them to the processed images
+      // Process images with coordinates as before
       const imagesWithSizes = await Promise.all(
         processedImages.map(async (image) => {
           const sizes = await calculateAndSetImageMarkerSize(image);
-          return {
-            ...image,
-            width: sizes.width,
-            height: sizes.height,
-          };
+          return { ...image, width: sizes.width, height: sizes.height };
         })
       );
 
@@ -608,49 +617,56 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     }
   };
 
-  const handleLocationSubmit = (location) => {
-    if (currentImageWithoutLocation) {
-      const updatedImage = {
-        ...currentImageWithoutLocation,
-        coordinates: [location.lng, location.lat],
-      };
+  const handleLocationSubmit = async (locations) => {
+    // locations is now an array of location data
+    const updatedImages = await Promise.all(
+      imagesWithoutLocation.map(async (image, index) => {
+        const location = locations[index];
+        const sizes = await calculateAndSetImageMarkerSize(image);
+        return {
+          ...image,
+          coordinates: [location.lng, location.lat],
+          width: sizes.width,
+          height: sizes.height,
+        };
+      })
+    );
 
-      setSelectedImages((prev) => [...prev, updatedImage]);
-      setShowLocationForm(false);
-      setCurrentImageWithoutLocation(null);
+    setSelectedImages((prev) => [...prev, ...updatedImages]);
+    setShowLocationForm(false);
+    setImagesWithoutLocation([]);
 
-      const { center, zoom } = calculateCenterAndZoom([
-        ...selectedImages,
-        updatedImage,
-      ]);
+    const { center, zoom } = calculateCenterAndZoom([
+      ...selectedImages,
+      ...updatedImages,
+    ]);
 
-      map.current.flyTo({
-        center: [center.lng, center.lat],
-        zoom: zoom,
-        duration: 0,
-      });
+    map.current.flyTo({
+      center: [center.lng, center.lat],
+      zoom: zoom,
+      duration: 0,
+    });
 
-      // Process the image with the new coordinates
-      const distributedImage = calculateOptimalDistribution(
-        [updatedImage],
-        map.current.getBounds(),
-        map.current,
-        markers.length === 0
-      );
+    // Process the images with new coordinates
+    const distributedImages = calculateOptimalDistribution(
+      updatedImages,
+      map.current.getBounds(),
+      map.current,
+      markers.length === 0
+    );
 
-      addRedDotMarkers(distributedImage);
-      addMoveableUserPictures(distributedImage);
-      // console.log("selectedImages[0]", selectedImages[0].coordinates);
-      if (
-        selectedImages[0]?.coordinates &&
-        selectedImages[0].coordinates.length > 0
-      ) {
-        updateTextSectionWithLocation(selectedImages[0].coordinates);
-      }
-      console.log("updatedImage", updatedImage.coordinates);
-      if (updatedImage.coordinates != []) {
-        updateTextSectionWithLocation(updatedImage.coordinates);
-      }
+    addRedDotMarkers(distributedImages);
+    addMoveableUserPictures(distributedImages);
+    // console.log("selectedImages[0]", selectedImages[0].coordinates);
+    if (
+      selectedImages[0]?.coordinates &&
+      selectedImages[0].coordinates.length > 0
+    ) {
+      updateTextSectionWithLocation(selectedImages[0].coordinates);
+    }
+    console.log("updatedImages", updatedImages[0].coordinates);
+    if (updatedImages[0].coordinates != []) {
+      updateTextSectionWithLocation(updatedImages[0].coordinates);
     }
   };
 
@@ -757,14 +773,11 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
 
   const handleLocationFormClose = () => {
     setShowLocationForm(false);
-    setCurrentImageWithoutLocation(null);
+    setImagesWithoutLocation([]);
   };
 
   return (
-    <div
-      className="flex flex-col items-center"
-      style={{ backgroundColor: "#f5f5dc" }}
-    >
+    <div className="">
       <div className="w-full flex justify-center mb-4 pt-4">
         <UploadPicturesButton onUpload={handleUpload} />
       </div>
@@ -772,119 +785,122 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         className="flex flex-col items-center"
         style={{ padding: "0 50px 50px 50px" }}
       >
-        <div className="w-full flex justify-center">
-          <div
-            ref={mapContainer}
-            style={{ width: "900px", height: "1260px", position: "relative" }}
-            className="relative mb-4"
-            onClick={handleMapClick}
-          >
-            {markers.map((marker) => (
-              <ImageMarker
-                key={marker.id}
-                image={marker}
-                style={{ width: marker.width, height: marker.height }}
-                isActive={marker.isActive}
-                onClick={handleMarkerClick}
-                onDrag={handleDrag}
-                onDragEnd={handleDragEnd}
-                onRemove={handleRemoveImageMarker}
-                map={map.current}
-              />
-            ))}
-            {redDots.map((dot) => {
-              if (!map.current) return null;
-              const pixelPosition = map.current.project(dot.coordinates);
-
-              return (
-                <RedDotMarker
-                  key={dot.id}
-                  dot={dot}
-                  position={[pixelPosition.x, pixelPosition.y]}
-                  mapRef={map}
-                  onRemove={handleRemoveRedDotMarker}
-                  onDragEnd={(dotId, newCoords) => {
-                    setRedDots((prev) =>
-                      prev.map((d) =>
-                        d.id === dotId ? { ...d, coordinates: newCoords } : d
-                      )
-                    );
-                    updateLines();
+        <div className="flex flex-col items-center bg-slate-50 p-8 exportable-map-container">
+          <div className="flex flex-col items-center bg-slate-50 border border-gray-400 p-2">
+            <div className="flex flex-col items-center bg-slate-50 border-gray-700 border-4">
+              <div className="w-full flex justify-center">
+                <div
+                  ref={mapContainer}
+                  style={{
+                    width: "900px",
+                    height: "1260px",
+                    position: "relative",
                   }}
-                  onClick={() => handleDotClick(dot.id)}
-                  isSelected={selectedDotId === dot.id}
-                />
-              );
-            })}
-            {selectedDotId && (
-              <IconMarkerSelector
-                position={map.current.project(
-                  redDots.find((dot) => dot.id === selectedDotId).coordinates
-                )}
-                onSelectIcon={handleIconSelect}
-              />
-            )}
-            <MapTextSection
-              headlineText={headlineText}
-              dividerText={dividerText}
-              taglineText={taglineText}
-            />
+                  className="relative mb-4"
+                  onClick={handleMapClick}
+                >
+                  {markers.map((marker) => (
+                    <ImageMarker
+                      key={marker.id}
+                      image={marker}
+                      style={{ width: marker.width, height: marker.height }}
+                      isActive={marker.isActive}
+                      onClick={handleMarkerClick}
+                      onDrag={handleDrag}
+                      onDragEnd={handleDragEnd}
+                      onRemove={handleRemoveImageMarker}
+                      map={map.current}
+                    />
+                  ))}
+                  {redDots.map((dot) => {
+                    if (!map.current) return null;
+                    const pixelPosition = map.current.project(dot.coordinates);
+
+                    return (
+                      <RedDotMarker
+                        key={dot.id}
+                        dot={dot}
+                        position={[pixelPosition.x, pixelPosition.y]}
+                        mapRef={map}
+                        onRemove={handleRemoveRedDotMarker}
+                        onDragEnd={(dotId, newCoords) => {
+                          setRedDots((prev) =>
+                            prev.map((d) =>
+                              d.id === dotId
+                                ? { ...d, coordinates: newCoords }
+                                : d
+                            )
+                          );
+                          updateLines();
+                        }}
+                        onClick={() => handleDotClick(dot.id)}
+                        isSelected={selectedDotId === dot.id}
+                      />
+                    );
+                  })}
+                  {selectedDotId && (
+                    <IconMarkerSelector
+                      position={map.current.project(
+                        redDots.find((dot) => dot.id === selectedDotId)
+                          .coordinates
+                      )}
+                      onSelectIcon={handleIconSelect}
+                    />
+                  )}
+                  <MapTextSection
+                    headlineText={headlineText}
+                    dividerText={dividerText}
+                    taglineText={taglineText}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <button
-          onClick={handleDownload}
-          className="mb-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-700"
-        >
-          Download High-Quality Map as Image
-        </button>
-        <button
-          onClick={toggleUIVisibility}
-          className="mb-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-700"
-        >
-          Toggle UI visibility
-        </button>
-        <TransmitDataButton
-          map={map}
-          redDots={redDots}
-          markers={markers}
-          headlineText={headlineText}
-          dividerText={dividerText}
-          taglineText={taglineText}
-        />
-        <div className="flex flex-wrap justify-center">
-          {selectedImages.map((image, index) => (
-            <img
-              key={index}
-              src={image.url}
-              alt={`Selected ${index}`}
-              className="m-2 w-24 h-24 object-cover rounded shadow-lg"
-            />
-          ))}
+        <div className="p-4">
+          <BottomActionButtons
+            handleDownload={handleDownload}
+            toggleUIVisibility={toggleUIVisibility}
+            map={map}
+            redDots={redDots}
+            markers={markers}
+            headlineText={headlineText}
+            dividerText={dividerText}
+            taglineText={taglineText}
+          />
+          <div className="flex flex-wrap justify-center">
+            {selectedImages.map((image, index) => (
+              <img
+                key={index}
+                src={image.url}
+                alt={`Selected ${index}`}
+                className="m-2 w-24 h-24 object-cover rounded shadow-lg"
+              />
+            ))}
+          </div>
+          <style>
+            {`.mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib {display: none !important;}
+              .red-dot-marker.dragging {
+                opacity: 0.8;
+                transition: none;
+              }
+              .custom-marker.dragging {
+                opacity: 0.8;
+                transition: none;
+                cursor: grabbing !important;
+              }
+              `}
+          </style>
         </div>
-        <style>
-          {`.mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib {display: none !important;}
-            .red-dot-marker.dragging {
-              opacity: 0.8;
-              transition: none;
-            }
-            .custom-marker.dragging {
-              opacity: 0.8;
-              transition: none;
-              cursor: grabbing !important;
-            }
-            `}
-        </style>
       </div>
-
       {showLocationForm && (
         <LocationForm
           onSubmit={handleLocationSubmit}
           onClose={handleLocationFormClose}
-          image={currentImageWithoutLocation}
+          images={imagesWithoutLocation}
         />
       )}
     </div>
   );
 };
-
 export default LiveEditor;

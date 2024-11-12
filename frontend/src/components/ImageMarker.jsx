@@ -75,17 +75,6 @@ const ImageMarker = ({
   useEffect(() => {
     if (!map) return;
 
-    // const mapBounds = map.getBounds();
-    // const offsetLng =
-    //   (mapBounds.getNorthEast().lng - image.coordinates[0]) * 0.3;
-    // const offsetLat =
-    //   (mapBounds.getNorthEast().lat - image.coordinates[1]) * 0.3;
-
-    // const adjustedCoords = [
-    //   image.coordinates[0] + offsetLng,
-    //   image.coordinates[1] + offsetLat,
-    // ];
-
     const adjustedCoords = [image.coordinates[0], image.coordinates[1]];
 
     setPosition(adjustedCoords);
@@ -118,6 +107,7 @@ const ImageMarker = ({
 
   const handleDragStart = (e) => {
     e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
     setIsDragging(true);
     onClick(image.id);
   };
@@ -142,14 +132,9 @@ const ImageMarker = ({
     }
   };
 
-  useEffect(() => {
-    const newGeoCoords = map.unproject(pixelPosition);
-    onDragEnd(image.id, [newGeoCoords.lng, newGeoCoords.lat]);
-  }, []);
-
-  const handleDragEnd = () => {
+  const handleDragEnd = (e) => {
     if (!isDragging || !map) return;
-
+    
     const newGeoCoords = map.unproject(pixelPosition);
     setPosition([newGeoCoords.lng, newGeoCoords.lat]);
     setIsDragging(false);
@@ -206,9 +191,10 @@ const ImageMarker = ({
           touchAction: "none",
           willChange: "transform",
         }}
-        onMouseDown={handleDragStart}
-        onMouseMove={handleDrag}
-        onMouseUp={handleDragEnd}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDrag}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
         onClick={handleClick}
       />
       {isActive && (

@@ -24,7 +24,7 @@ export default function UploadPicturesButton({ onUpload }) {
         onClick={handleClick}
         className={`
           bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 
-          text-gray-800 font-semibold py-2 px-6 rounded-full shadow-lg hover:shadow-xl 
+          text-gray-800 font-semibold py-2 px-10 rounded-full shadow-lg hover:shadow-xl 
           transition-all duration-300 ease-in-out transform hover:scale-105 
           flex items-center space-x-2 relative overflow-hidden
           ${

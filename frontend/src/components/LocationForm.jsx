@@ -19,11 +19,13 @@ const loadGoogleMapsScript = (callback) => {
   }
 };
 
-export default function LocationForm({ onSubmit, onClose, image }) {
+export default function LocationForm({ onSubmit, onClose, images }) {
   const [location, setLocation] = useState("");
   const [isValidLocation, setIsValidLocation] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const inputRef = useRef(null);
+  const [locations, setLocations] = useState([]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -33,8 +35,20 @@ export default function LocationForm({ onSubmit, onClose, image }) {
       address: selectedPlace.formatted_address,
       lat: selectedPlace.geometry.location.lat(),
       lng: selectedPlace.geometry.location.lng(),
+      imageUrl: images[currentIndex].url
     };
-    onSubmit(locationData);
+    
+    const updatedLocations = [...locations, locationData];
+    setLocations(updatedLocations);
+
+    if (currentIndex === images.length - 1) {
+      onSubmit(updatedLocations);
+    } else {
+      setCurrentIndex(currentIndex + 1);
+      setLocation("");
+      setIsValidLocation(false);
+      setSelectedPlace(null);
+    }
   };
 
   useEffect(() => {
@@ -58,7 +72,6 @@ export default function LocationForm({ onSubmit, onClose, image }) {
     });
   }, []);
 
-  // Add handler to reset validation when input changes
   const handleInputChange = (e) => {
     setLocation(e.target.value);
     setIsValidLocation(false);
@@ -69,13 +82,14 @@ export default function LocationForm({ onSubmit, onClose, image }) {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
         <div className="flex justify-between items-center p-6 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Add Location</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-500 transition-colors duration-200"
-            aria-label="Close dialog"
-          >
-            <XIcon className="h-6 w-6" />
-          </button>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">
+              {currentIndex + 1}/{images.length}
+            </span>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-500 transition-colors duration-200">
+              <XIcon className="h-6 w-6" />
+            </button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6">
           <div className="mb-4">
@@ -83,10 +97,10 @@ export default function LocationForm({ onSubmit, onClose, image }) {
               Please type and select the location of your image below. You can
               adjust or move the image later if needed.
             </p>
-            {image && (
+            {images[currentIndex] && (
               <div className="mb-4 flex justify-center">
                 <img
-                  src={image.url}
+                  src={images[currentIndex].url}
                   alt="Image without location"
                   className="max-h-48 object-contain rounded-lg shadow-md"
                 />
@@ -111,7 +125,12 @@ export default function LocationForm({ onSubmit, onClose, image }) {
             }`}
             disabled={!isValidLocation}
           >
-            {isValidLocation ? "Submit" : "Please select location"}
+            {isValidLocation 
+              ? currentIndex + 1 === images.length 
+                ? "Submit" 
+                : "Next Image"
+              : "Please select location"
+            }
           </button>
         </form>
       </div>
