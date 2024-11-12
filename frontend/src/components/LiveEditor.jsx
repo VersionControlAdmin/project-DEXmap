@@ -17,6 +17,7 @@ import ImageMarker from "./ImageMarker";
 import IconMarkerSelector from "./IconMarkerSelector";
 import MapTextSection from "./MapTextSection";
 import UploadPicturesButton from "./UploadPicturesButton";
+import TransmitDataButton from "./TransmitDataButton";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -27,7 +28,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const [activeMarkerId, setActiveMarkerId] = useState(null); // Track the active marker
   const [markerSizesWidth, setMarkerSizesWidth] = useState([]);
   const [markerSizesHeight, setMarkerSizesHeight] = useState([]);
-  const [markerStyles, setMarkerStyles] = useState([]);
   const [uiElements, setUiElements] = useState({
     controls: true,
     handles: true,
@@ -450,64 +450,6 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     updateLines();
   };
 
-  // Not working, needs an update
-  const getClosestCorner = (marker, redDot) => {
-    const [lng, lat] = marker.coordinates;
-
-    // Get marker style for dimensions
-    const markerStyle = markerStyles.find(
-      (style) => style.id === marker.id
-    ) || {
-      width: markerSizesWidth[0],
-      height: markerSizesHeight[0],
-    };
-
-    const markerWidth = parseFloat(markerStyle.width);
-    const markerHeight = parseFloat(markerStyle.height);
-
-    // Assuming we need to calculate based on the actual image size relative to the marker
-    const imageWidthFactor = 2.5;
-    const imageHeightFactor = 2.5;
-
-    const actualImageWidth = markerWidth * imageWidthFactor;
-    const actualImageHeight = markerHeight * imageHeightFactor;
-
-    // Get the map's current zoom level and convert the pixel size to geographical units
-    const zoomScale = Math.pow(2, -map.current.getZoom());
-
-    // Calculate longitude and latitude offsets for each corner
-    const lngOffset = actualImageWidth * zoomScale * 0.00001;
-    const latOffset = actualImageHeight * zoomScale * 0.00001;
-
-    // Define the corners based on the actual size of the picture
-    const corners = [
-      [lng - lngOffset, lat + latOffset], // Top left
-      [lng + lngOffset, lat + latOffset], // Top right
-      [lng - lngOffset, lat - latOffset], // Bottom left
-      [lng + lngOffset, lat - latOffset], // Bottom right
-    ];
-
-    let closestCorner = corners[0];
-    let minDistance = getDistance(closestCorner, redDot.coordinates);
-
-    for (let i = 1; i < corners.length; i++) {
-      const distance = getDistance(corners[i], redDot.coordinates);
-      if (distance < minDistance) {
-        closestCorner = corners[i];
-        minDistance = distance;
-      }
-    }
-
-    return closestCorner;
-  };
-
-  // Helper to calculate distance
-  const getDistance = (pointA, pointB) => {
-    const lngDiff = pointA[0] - pointB[0];
-    const latDiff = pointA[1] - pointB[1];
-    return Math.sqrt(lngDiff * lngDiff + latDiff * latDiff);
-  };
-
   // all useEffects
   useEffect(() => {
     initializeMap();
@@ -737,6 +679,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         );
         addRedDotMarkers(distributedInitialImages);
         addMoveableUserPictures(distributedInitialImages);
+        updateTextSectionWithLocation(selectedImages[0].coordinates);
         setIsInitialized(true);
       } else {
         const distributedNewImages = calculateOptimalDistribution(
@@ -809,12 +752,27 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     console.log("MarkerSizesHeight", markerSizesHeight);
   }, [markerSizesWidth, markerSizesHeight]);
 
+  // Add a new handler for drag
+  const handleDrag = useCallback((markerId, newCoords) => {
+    setMarkers((prev) =>
+      prev.map((marker) =>
+        marker.id === markerId ? { ...marker, coordinates: newCoords } : marker
+      )
+    );
+    updateLines();
+  }, []);
+
   return (
-    <>
-      <UploadPicturesButton onUpload={handleUpload} />
+    <div
+      className="flex flex-col items-center"
+      style={{ backgroundColor: "#f5f5dc" }}
+    >
+      <div className="w-full flex justify-center mb-4 pt-4">
+        <UploadPicturesButton onUpload={handleUpload} />
+      </div>
       <div
         className="flex flex-col items-center"
-        style={{ padding: "50px", backgroundColor: "#f5f5dc" }}
+        style={{ padding: "0 50px 50px 50px" }}
       >
         <div className="w-full flex justify-center">
           <div
@@ -842,6 +800,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
                 style={marker.style}
                 isActive={marker.id === activeMarkerId}
                 onClick={handleMarkerClick}
+                onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
                 onRemove={handleRemoveImageMarker}
                 map={map.current}
@@ -898,6 +857,14 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
         >
           Toggle UI visibility
         </button>
+        <TransmitDataButton
+          map={map}
+          redDots={redDots}
+          markers={markers}
+          headlineText={headlineText}
+          dividerText={dividerText}
+          taglineText={taglineText}
+        />
         <div className="flex flex-wrap justify-center">
           {selectedImages.map((image, index) => (
             <img
@@ -922,7 +889,7 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
             `}
         </style>
       </div>
-    </>
+    </div>
   );
 };
 

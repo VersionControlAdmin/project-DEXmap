@@ -7,7 +7,7 @@ const MapTextSection = ({ headlineText, dividerText, taglineText }) => {
       style={{
         background:
           "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 8%, rgba(255,255,255,0.9) 20%, rgba(255,255,255,0.9) 30%, rgba(255,255,255,1) 50%, rgba(255,255,255,1) 100%)",
-        height: "calc(100vh / 5)",
+        height: "17%",
         position: "absolute",
         bottom: 0,
         left: 0,

@@ -7,3 +7,4 @@
 7. Consistent Naming Conventions: Use clear and consistent naming conventions for components, methods, and variables to ensure code is understandable and maintainable.
 8. Write Meaningful Comments for Complex Code: Add brief, meaningful comments to explain the intent behind any complex methods or logic, especially where breaking down is impractical.
 9. Structure and Reusability First: When designing a new feature, aim for component reusability and modular structure to reduce duplication across the project.
+10. Keep every preexisting feature: Most importantly, when changing code, do never leave any features of the previous version of code had, behind! All the functionality of the previous version should also be included in the new version of the code, suggested by you.
