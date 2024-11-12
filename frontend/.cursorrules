@@ -1,0 +1,9 @@
+1. Use React-Specific Functionalities: Always implement functionalities using React APIs and best practices. Avoid falling back on plain JavaScript methods if a React alternative is available.
+2. Apply Tailwind CSS Consistently: Use Tailwind CSS for all styling. Do not use inline styles, traditional CSS, or other CSS frameworks.
+3. Outsource Component Logic When Possible: If a component's logic is reusable, practical, and enhances code organisation, refactor it into separate methods or utility functions.
+4. Break Down Complex Logic: Split complex code into smaller, clearly defined methods. Prioritise readability and reusability to make components easier to maintain and test.
+5. Prioritise Component Modularity: Keep components as small and focused as possible. Each component should handle a specific piece of UI or logic to enable easy reuse.
+6. Use Hooks for State and Lifecycle Logic: Where applicable, use React hooks (useState, useEffect, etc.) for managing component state and side effects. Custom hooks are encouraged for reusable logic.
+7. Consistent Naming Conventions: Use clear and consistent naming conventions for components, methods, and variables to ensure code is understandable and maintainable.
+8. Write Meaningful Comments for Complex Code: Add brief, meaningful comments to explain the intent behind any complex methods or logic, especially where breaking down is impractical.
+9. Structure and Reusability First: When designing a new feature, aim for component reusability and modular structure to reduce duplication across the project.
