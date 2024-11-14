@@ -13,6 +13,7 @@ const ImageMarker = ({
   onClick,
   onDragEnd,
   onRemove,
+  onImageEdit,
   map,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -24,24 +25,19 @@ const ImageMarker = ({
     }
     return [0, 0];
   });
-  const [currentImage, setCurrentImage] = useState(image.url); // State for current image
-  const [originalImage] = useState(image.url); // State for original image
-  const [isEditing, setIsEditing] = useState(false); // State for editor visibility
-  const [imageSize, setImageSize] = useState(style); // Add this state
-  const [scale, setScale] = useState(1); // Add this state for scaling
+  const [originalImage] = useState(image.url);
+  const [currentImage, setCurrentImage] = useState(image.url);
+  const [isEditing, setIsEditing] = useState(false);
+  const [imageSize, setImageSize] = useState(style);
+  const [scale, setScale] = useState(1);
 
-  //   useEffect(() => {
-  //     console.log("image", image);
-  //   }, [image]);
-  // Add this function to update dimensions when image changes
   const updateImageDimensions = (imageUrl) => {
     const img = new Image();
     img.onload = () => {
       const aspectRatio = img.width / img.height;
-      let newWidth = style.width * scale; // Apply scale to width
+      let newWidth = style.width * scale;
       let newHeight = newWidth / aspectRatio;
 
-      // Cap the dimensions at 400 px
       if (newWidth > 600) {
         newWidth = 600;
         newHeight = newWidth / aspectRatio;
@@ -56,22 +52,18 @@ const ImageMarker = ({
     img.src = imageUrl;
   };
 
-  // Update dimensions when currentImage changes
   useEffect(() => {
     updateImageDimensions(currentImage);
   }, [currentImage, scale]);
 
-  // Update dimensions when scale changes
   useEffect(() => {
     updateImageDimensions(currentImage);
   }, [currentImage, scale]);
 
-  // Add handler for scale changes
   const handleScale = (newScale) => {
     setScale(newScale);
   };
 
-  // Set initial coordinates with offset
   useEffect(() => {
     if (!map) return;
 
@@ -86,7 +78,6 @@ const ImageMarker = ({
     });
   }, []);
 
-  // Update pixel position when map moves
   useEffect(() => {
     if (!map) return;
 
@@ -95,7 +86,7 @@ const ImageMarker = ({
       setPixelPosition([pos.x, pos.y]);
     };
 
-    updatePosition(); // Initial position
+    updatePosition();
     map.on("move", updatePosition);
     map.on("zoom", updatePosition);
 
@@ -134,7 +125,7 @@ const ImageMarker = ({
 
   const handleDragEnd = (e) => {
     if (!isDragging || !map) return;
-    
+
     const newGeoCoords = map.unproject(pixelPosition);
     setPosition([newGeoCoords.lng, newGeoCoords.lat]);
     setIsDragging(false);
@@ -149,17 +140,14 @@ const ImageMarker = ({
   };
 
   const handleCropAndResize = (e) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setIsEditing(true);
   };
 
   const handleSave = (newImageUrl) => {
     setCurrentImage(newImageUrl);
     setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
+    onImageEdit?.(image.id, newImageUrl);
   };
 
   const handleRemove = (e) => {
@@ -174,7 +162,7 @@ const ImageMarker = ({
           isDragging ? "dragging" : ""
         }`}
         style={{
-          ...imageSize, // Use imageSize instead of style
+          ...imageSize,
           position: "absolute",
           left: 0,
           top: 0,
@@ -247,10 +235,10 @@ const ImageMarker = ({
       )}
       {isEditing && (
         <ImageEditor
-          key={isEditing ? "editing" : "not-editing"} // Add key to force remount
+          key={isEditing ? "editing" : "not-editing"}
           imageUrl={originalImage}
           onSave={handleSave}
-          onCancel={handleCancel}
+          onCancel={() => setIsEditing(false)}
         />
       )}
     </div>

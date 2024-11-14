@@ -12,7 +12,7 @@ import {
 import "@watergis/mapbox-gl-export/dist/mapbox-gl-export.css";
 import html2canvas from "html2canvas";
 import axios from "axios";
-import RedDotMarker from "./RedDotMarkers";
+import RedDotMarker from "./RedDotMarker";
 import ImageMarker from "./ImageMarker";
 import IconMarkerSelector from "./IconMarkerSelector";
 import MapTextSection from "./MapTextSection";
@@ -20,6 +20,7 @@ import UploadPicturesButton from "./UploadPicturesButton";
 import TransmitDataButton from "./TransmitDataButton";
 import LocationForm from "./LocationForm";
 import BottomActionButtons from "./BottomActionButtons";
+import { Heart } from "lucide-react";
 
 const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   const mapContainer = useRef(null);
@@ -59,9 +60,18 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
   };
 
   // Add handler for icon selection
-  const handleIconSelect = (icon) => {
+  const handleIconSelect = (iconData) => {
     setRedDots((prev) =>
-      prev.map((dot) => (dot.id === selectedDotId ? { ...dot, icon } : dot))
+      prev.map((dot) =>
+        dot.id === selectedDotId
+          ? {
+              ...dot,
+              icon: iconData.Icon,
+              filled: iconData.filled,
+              color: iconData.color,
+            }
+          : dot
+      )
     );
     setSelectedDotId(null);
   };
@@ -422,7 +432,9 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
       return {
         id: `reddotForImageMarker-${currentId}`,
         coordinates: images[index].coordinates,
-        icon: "../assets/user-placeable-icons/heart.svg",
+        icon: Heart,
+        filled: true,
+        color: "red"
       };
     });
 
@@ -776,6 +788,24 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
     setImagesWithoutLocation([]);
   };
 
+  const handleImageEdit = useCallback(
+    (markerId, newImageUrl, originalImageUrl) => {
+      // Update markers state with new image URL
+      setMarkers((prev) =>
+        prev.map((marker) =>
+          marker.id === markerId
+            ? {
+                ...marker,
+                url: newImageUrl,
+                originalUrl: originalImageUrl, // Keep track of original
+              }
+            : marker
+        )
+      );
+    },
+    []
+  );
+
   return (
     <div className="">
       <div className="w-full flex justify-center mb-4 pt-4">
@@ -806,9 +836,9 @@ const LiveEditor = ({ selectedImages, setSelectedImages }) => {
                       style={{ width: marker.width, height: marker.height }}
                       isActive={marker.isActive}
                       onClick={handleMarkerClick}
-                      onDrag={handleDrag}
                       onDragEnd={handleDragEnd}
                       onRemove={handleRemoveImageMarker}
+                      onImageEdit={handleImageEdit}
                       map={map.current}
                     />
                   ))}

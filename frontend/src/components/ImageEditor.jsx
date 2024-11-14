@@ -30,8 +30,8 @@ export default function ImageEditor({ imageUrl, onSave, onCancel }) {
     const canvas = document.createElement("canvas");
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
-    canvas.width = crop.width;
-    canvas.height = crop.height;
+    canvas.width = crop.width * scaleX;
+    canvas.height = crop.height * scaleY;
     const ctx = canvas.getContext("2d");
 
     if (ctx) {
@@ -43,19 +43,23 @@ export default function ImageEditor({ imageUrl, onSave, onCancel }) {
         crop.height * scaleY,
         0,
         0,
-        crop.width,
-        crop.height
+        crop.width * scaleX,
+        crop.height * scaleY
       );
     }
 
     return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          console.error("Canvas is empty");
-          return;
-        }
-        resolve(URL.createObjectURL(blob));
-      }, "image/jpeg");
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            console.error("Canvas is empty");
+            return;
+          }
+          resolve(URL.createObjectURL(blob));
+        },
+        "image/jpeg",
+        1
+      );
     });
   }, []);
 

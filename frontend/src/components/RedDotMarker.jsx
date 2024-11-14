@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import RemoveButton from "./RemoveButton";
+import { colorOptions } from "./IconMarkerSelector";
+
+const ICON_SIZE = 40;
 
 const RedDotMarker = ({
   dot,
@@ -10,7 +13,6 @@ const RedDotMarker = ({
   isSelected,
   onRemove,
 }) => {
-  // Add mapRef prop
   const [currentPosition, setCurrentPosition] = useState(position);
 
   const handleRemove = (e) => {
@@ -22,6 +24,14 @@ const RedDotMarker = ({
     setCurrentPosition(position);
   }, [position]);
 
+  // Get color class based on dot's color property
+  const getColorClass = () => {
+    const colorOption = colorOptions.find((c) => c.id === dot.color);
+    return colorOption ? colorOption.class : "text-[#BD3D2F]"; // Default to red if no color specified
+  };
+
+  const IconComponent = dot.icon;
+
   return (
     <div
       className={`red-dot-marker ${isSelected ? "selected" : ""}`}
@@ -29,15 +39,15 @@ const RedDotMarker = ({
         position: "absolute",
         left: 0,
         top: 0,
-        transform: `translate(${currentPosition[0] - 15}px, ${
-          currentPosition[1] - 15
+        transform: `translate(${currentPosition[0] - ICON_SIZE/2}px, ${
+          currentPosition[1] - ICON_SIZE/2
         }px)`,
         cursor: "grab",
         zIndex: isSelected ? 50 : 1,
         touchAction: "none",
         userSelect: "none",
-        width: "30px",
-        height: "30px",
+        width: `${ICON_SIZE}px`,
+        height: `${ICON_SIZE}px`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -69,26 +79,16 @@ const RedDotMarker = ({
         onClick();
       }}
     >
-      <img
-        src={dot.icon}
-        alt="location marker"
-        style={{
-          width: "30px",
-          height: "30px",
-          pointerEvents: "none",
-          transform: "none",
-          filter: isSelected ? "brightness(1.2)" : "none",
-        }}
-        draggable={false}
+      <IconComponent
+        style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}
+        className={`${getColorClass()} ${
+          isSelected ? "brightness-110" : ""
+        }`}
+        fill={dot.filled ? "currentColor" : "none"}
       />
       {isSelected && (
         <div
-          style={{
-            position: "absolute",
-            bottom: "-20px",
-            left: "75%",
-            transform: "translateX(-50%)",
-          }}
+          className="absolute -bottom-5 left-3/4 -translate-x-1/2"
           onClick={(e) => e.stopPropagation()}
         >
           <RemoveButton onClick={handleRemove} />

@@ -25,3 +25,4 @@ dist-ssr
 
 # Exclude crendtials and API access tokens
 .env
+node_modules
